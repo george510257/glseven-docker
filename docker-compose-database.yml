@@ -55,7 +55,7 @@ services:
     volumes:
       - ${DOCKER_VOLUME}/rabbitmq/data:/var/lib/rabbitmq
     networks:
-      aiadver:
+      glseven:
         ipv4_address: 172.18.1.4
     ports:
       - "4369:4369"
@@ -76,7 +76,7 @@ services:
       - ${DOCKER_VOLUME}/portainer/data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
-      aiadver:
+      glseven:
         ipv4_address: 172.18.1.5
     ports:
       - "9000:9000"
@@ -93,7 +93,7 @@ services:
       - ${DOCKER_VOLUME}/nacos/logs:/home/nacos/logs
       - ./nacos/config/custom.properties:/home/nacos/init.d/custom.properties
     networks:
-      aiadver:
+      glseven:
         ipv4_address: 172.18.1.6
     external_links:
       - mysql
@@ -112,7 +112,7 @@ services:
       - ${DOCKER_VOLUME}/xxl-job-admin/logs:/data/applogs
       - ./xxl-job-admin/application.properties:/application.properties
     networks:
-      aiadver:
+      glseven:
         ipv4_address: 172.18.1.7
     external_links:
       - mysql
