@@ -45,6 +45,7 @@ services:
     image: rabbitmq:management
     container_name: rabbitmq
     hostname: rabbitmq
+    user: root
     restart: always
     env_file:
       - common/env/common.env
