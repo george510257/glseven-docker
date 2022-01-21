@@ -45,13 +45,11 @@ services:
     image: rabbitmq:management
     container_name: rabbitmq
     hostname: rabbitmq
-    user: root
     restart: always
     env_file:
       - common/env/common.env
     volumes:
       - ${DOCKER_VOLUME}/rabbitmq/data:/var/lib/rabbitmq
-      - ${DOCKER_VOLUME}/rabbitmq/config:/etc/rabbitmq
     networks:
       glseven:
         ipv4_address: 172.18.1.4
