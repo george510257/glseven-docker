@@ -50,6 +50,7 @@ services:
       - common/env/common.env
     volumes:
       - ${DOCKER_VOLUME}/rabbitmq/data:/var/lib/rabbitmq
+      - ./rabbitmq/config:/etc/rabbitmq
     networks:
       glseven:
         ipv4_address: 172.18.1.4
