@@ -1,0 +1,76 @@
+version: "3.6"
+
+networks:
+  glseven:
+    external: true
+
+services:
+  portainer:
+    image: portainer/portainer-ce
+    container_name: portainer
+    hostname: portainer
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ${DOCKER_VOLUME}/portainer/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.1
+    ports:
+      - "9000:9000"
+
+  nacos:
+    image: nacos/nacos-server
+    container_name: nacos
+    hostname: nacos
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/nacos.env
+    volumes:
+      - ${DOCKER_VOLUME}/nacos/logs:/home/nacos/logs
+      - ./nacos/config/custom.properties:/home/nacos/init.d/custom.properties
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.2
+    external_links:
+      - mysql
+    ports:
+      - "8848:8848"
+      - "9555:9555"
+
+  xxl-job-admin:
+    image: xuxueli/xxl-job-admin:2.3.0
+    container_name: xxl-job-admin
+    hostname: xxl-job-admin
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ${DOCKER_VOLUME}/xxl-job-admin/logs:/data/applogs
+      - ./xxl-job-admin/application.properties:/application.properties
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.3
+    external_links:
+      - mysql
+    ports:
+      - "8081:8080"
+
+  keycloak:
+    image: jboss/keycloak
+    container_name: keycloak
+    hostname: keycloak
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/keycloak.env
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.4
+    external_links:
+      - mysql
+    ports:
+      - "8082:8080"
