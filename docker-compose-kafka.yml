@@ -11,6 +11,7 @@ services:
     hostname: zookeeper-1
     restart: always
     volumes:
+      - ${DOCKER_VOLUME}/zkcluster/zookeeper-1/logs:/logs
       - ${DOCKER_VOLUME}/zkcluster/zookeeper-1/data:/data
       - ${DOCKER_VOLUME}/zkcluster/zookeeper-1/datalog:/datalog
     environment:
@@ -28,6 +29,7 @@ services:
     hostname: zookeeper-2
     restart: always
     volumes:
+      - ${DOCKER_VOLUME}/zkcluster/zookeeper-2/logs:/logs
       - ${DOCKER_VOLUME}/zkcluster/zookeeper-2/data:/data
       - ${DOCKER_VOLUME}/zkcluster/zookeeper-2/datalog:/datalog
     environment:
@@ -45,6 +47,7 @@ services:
     hostname: zookeeper-3
     restart: always
     volumes:
+      - ${DOCKER_VOLUME}/zkcluster/zookeeper-3/logs:/logs
       - ${DOCKER_VOLUME}/zkcluster/zookeeper-3/data:/data
       - ${DOCKER_VOLUME}/zkcluster/zookeeper-3/datalog:/datalog
     environment:
