@@ -70,6 +70,7 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://kafka-1:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
       KAFKA_OPTS: -Djava.security.auth.login.config=/opt/kafka/config/kafka_server_jaas.conf
     volumes:
       - ${DOCKER_VOLUME}/kafkaCluster/kafka-1/logs:/kafka
@@ -96,6 +97,7 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://kafka-2:9093
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9093
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
       KAFKA_OPTS: -Djava.security.auth.login.config=/opt/kafka/config/kafka_server_jaas.conf
     volumes:
       - ${DOCKER_VOLUME}/kafkaCluster/kafka-2/logs:/kafka
@@ -122,6 +124,7 @@ services:
       KAFKA_LISTENERS: PLAINTEXT://kafka-3:9094
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9094
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
       KAFKA_OPTS: -Djava.security.auth.login.config=/opt/kafka/config/kafka_server_jaas.conf
     volumes:
       - ${DOCKER_VOLUME}/kafkaCluster/kafka-3/logs:/kafka
