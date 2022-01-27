@@ -6,7 +6,7 @@ export DOCKER_VOLUME=/docker/glseven
 #mkdir -p $DOCKER_VOLUME/elasticsearch/data/ && chown -R 1000 $DOCKER_VOLUME/elasticsearch/data/
 
 ## nexus3
-#mkdir -p $DOCKER_VOLUME/nexus3/data/ && chown -R 200 $DOCKER_VOLUME/nexus3/data/
+mkdir -p $DOCKER_VOLUME/nexus3/data/ && chown -R 200 $DOCKER_VOLUME/nexus3/data/
 
 ## prometheus
 #mkdir -p $DOCKER_VOLUME/prometheus/data/ && chown -R 65534 $DOCKER_VOLUME/prometheus/data/
