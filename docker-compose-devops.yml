@@ -1,0 +1,25 @@
+version: "3.6"
+
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # DevOps环境 172.18.2网段 8000端口段 ==================================================================================
+  nexus3:
+    image: sonatype/nexus3
+    container_name: nexus3
+    hostname: nexus3
+    restart: always
+    privileged: true
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ${DOCKER_VOLUME}/nexus3/data:/nexus-data
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.1
+    ports:
+      - "5000:5000"
+      - "8081:8081"

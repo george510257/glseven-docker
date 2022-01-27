@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#docker-compose -f docker-compose-devops.yml -p devops down
+docker-compose -f docker-compose-devops.yml -p devops down
 
 #docker-compose -f docker-compose-manager.yml -p manager down
 
