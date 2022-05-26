@@ -42,7 +42,7 @@ services:
       - "9555:9555"
 
   xxl-job-admin:
-    image: xuxueli/xxl-job-admin:2.3.0
+    image: xuxueli/xxl-job-admin:2.3.1
     container_name: xxl-job-admin
     hostname: xxl-job-admin
     restart: always
