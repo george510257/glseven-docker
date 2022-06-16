@@ -23,3 +23,88 @@ services:
     ports:
       - "5000:5000"
       - "8081:8081"
+
+  gitlab:
+    image: gitlab/gitlab-ce
+    container_name: gitlab
+    hostname: gitlab
+    restart: always
+    shm_size: 2gb
+    env_file:
+      - common/env/common.env
+      - common/env/gitlab.env
+    volumes:
+      - ${DOCKER_VOLUME}/gitlab/config:/etc/gitlab
+      - ${DOCKER_VOLUME}/gitlab/logs:/var/log/gitlab
+      - ${DOCKER_VOLUME}/gitlab/data:/var/opt/gitlab
+      - ./gitlab/config/omnibus_config.rb:/etc/gitlab/omnibus_config.rb
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.2
+    ports:
+      - "8443:443"
+      - "80:80"
+      - "8022:22"
+
+  sonarqube:
+    image: sonarqube
+    container_name: sonarqube
+    hostname: sonarqube
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/sonarqube.env
+    volumes:
+      - ${DOCKER_VOLUME}/sonarqube/conf:/opt/sonarqube/conf
+      - ${DOCKER_VOLUME}/sonarqube/data:/opt/sonarqube/data
+      - ${DOCKER_VOLUME}/sonarqube/logs:/opt/sonarqube/logs
+      - ${DOCKER_VOLUME}/sonarqube/extensions:/opt/sonarqube/extensions
+    external_links:
+      - postgres
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.3
+    ports:
+      - "39000:9000"
+
+  jenkins:
+    image: jenkins/jenkins
+    container_name: jenkins
+    hostname: jenkins
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ${DOCKER_VOLUME}/jenkins/home:/var/jenkins_home
+#      - ${JAVA_VOLUME}:/java
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.4
+    ports:
+      - "38080:8080"
+      - "50000:50000"
+
+  jumpserver:
+    image: jumpserver/jms_all
+    container_name: jumpserver
+    hostname: jumpserver
+    restart: always
+    privileged: true
+    env_file:
+      - common/env/common.env
+      - common/env/jumpserver.env
+    volumes:
+      - ${DOCKER_VOLUME}/jumpserver/data:/opt/jumpserver/data
+      - ${DOCKER_VOLUME}/jumpserver/mysql:/var/lib/mysql
+      - ${DOCKER_VOLUME}/jumpserver/guacamole:/config/guacamole/data
+      - ${DOCKER_VOLUME}/jumpserver/koko:/opt/koko/data
+    external_links:
+      - mysql
+      - redis
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.5
+    ports:
+      - "30080:80"
+      - "2222:2222"

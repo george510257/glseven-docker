@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export DOCKER_VOLUME=/data/docker/glseven
+export DOCKER_VOLUME=/docker/glseven
 
 ## elasticsearch
 #mkdir -p $DOCKER_VOLUME/elasticsearch/data/ && chown -R 1000 $DOCKER_VOLUME/elasticsearch/data/

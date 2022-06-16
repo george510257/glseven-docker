@@ -61,3 +61,47 @@ services:
       - "15671:15671"
       - "15672:15672"
       - "25672:25672"
+
+  mongo:
+    image: mongo
+    container_name: mongo
+    hostname: mongo
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/mongo.env
+    volumes:
+      - ${DOCKER_VOLUME}/mongo/data/db:/data/db
+      - ${DOCKER_VOLUME}/mongo/data/configdb:/data/configdb
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.5
+    ports:
+      - "27017:27017"
+
+  mongo-express:
+    image: mongo-express
+    container_name: mongo-express
+    hostname: mongo-express
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/mongo-express.env
+    depends_on:
+      - mongo
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.6
+    ports:
+      - "18081:8081"
+
+  adminer:
+    image: adminer
+    container_name: adminer
+    hostname: adminer
+    restart: always
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.7
+    ports:
+      - "18080:8080"

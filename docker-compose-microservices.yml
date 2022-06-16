@@ -57,7 +57,7 @@ services:
     external_links:
       - mysql
     ports:
-      - "8088:8080"
+      - "48080:8080"
 
   keycloak:
     image: jboss/keycloak
@@ -73,4 +73,4 @@ services:
     external_links:
       - mysql
     ports:
-      - "8082:8080"
+      - "48081:8080"
