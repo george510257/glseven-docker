@@ -105,3 +105,40 @@ services:
         ipv4_address: 172.18.1.7
     ports:
       - "18080:8080"
+
+  openldap:
+    image: osixia/openldap
+    container_name: openldap
+    hostname: openldap
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/openldap.env
+    volumes:
+      - ${DOCKER_VOLUME}/openldap/data:/var/lib/ldap
+      - ${DOCKER_VOLUME}/openldap/config:/etc/ldap/slapd.d
+    networks:
+      aiadver:
+        ipv4_address: 172.18.1.8
+    ports:
+      - "389:389"
+      - "636:636"
+
+  phpldapadmin:
+    image: osixia/phpldapadmin
+    container_name: phpldapadmin
+    hostname: phpldapadmin
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/phpldapadmin.env
+    volumes:
+      - ${DOCKER_VOLUME}/phpldapadmin/data:/var/www/phpldapadmin
+    links:
+      - openldap
+    networks:
+      aiadver:
+        ipv4_address: 172.18.1.9
+    ports:
+      - "10080:80"
+      - "10443:443"
