@@ -142,3 +142,19 @@ services:
     ports:
       - "6080:80"
       - "6443:443"
+
+  etcd:
+    image: bitnami/etcd
+    container_name: etcd
+    hostname: etcd
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/etcd.env
+    volumes:
+      - ${DOCKER_VOLUME}/etcd/data:/bitnami/etcd
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.10
+    ports:
+      - "2379:2379"

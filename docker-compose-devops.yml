@@ -19,7 +19,7 @@ services:
       - ${DOCKER_VOLUME}/nexus3/data:/nexus-data
     networks:
       glseven:
-        ipv4_address: 172.18.3.1
+        ipv4_address: 172.18.2.1
     ports:
       - "5000:5000"
       - "8081:8081"

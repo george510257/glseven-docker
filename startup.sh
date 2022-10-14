@@ -9,4 +9,5 @@ docker network create --driver=bridge --subnet=172.18.0.0/16 glseven
 
 docker compose -f docker-compose-database.yml -p database up -d
 docker compose -f docker-compose-devops.yml -p devops up -d
+docker compose -f docker-compose-manager.yml -p mamager up -d
 docker compose -f docker-compose-microservices.yml -p microservices up -d

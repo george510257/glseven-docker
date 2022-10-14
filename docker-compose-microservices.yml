@@ -5,22 +5,6 @@ networks:
     external: true
 
 services:
-  portainer:
-    image: portainer/portainer-ce
-    container_name: portainer
-    hostname: portainer
-    restart: always
-    env_file:
-      - common/env/common.env
-    volumes:
-      - ${DOCKER_VOLUME}/portainer/data:/data
-      - /var/run/docker.sock:/var/run/docker.sock
-    networks:
-      glseven:
-        ipv4_address: 172.18.4.1
-    ports:
-      - "9000:9000"
-
   nacos:
     image: nacos/nacos-server
     container_name: nacos
@@ -34,7 +18,7 @@ services:
       - ./nacos/config/custom.properties:/home/nacos/init.d/custom.properties
     networks:
       glseven:
-        ipv4_address: 172.18.4.2
+        ipv4_address: 172.18.4.1
     external_links:
       - mysql
     ports:
@@ -55,7 +39,7 @@ services:
       - ./xxl-job-admin/application.properties:/application.properties
     networks:
       glseven:
-        ipv4_address: 172.18.4.3
+        ipv4_address: 172.18.4.2
     external_links:
       - mysql
     ports:
@@ -71,8 +55,45 @@ services:
       - common/env/keycloak.env
     networks:
       glseven:
-        ipv4_address: 172.18.4.4
+        ipv4_address: 172.18.4.3
     external_links:
       - mysql
     ports:
       - "48081:8080"
+
+  apisix-dashboard:
+    image: apache/apisix-dashboard
+    container_name: apisix-dashboard
+    hostname: apisix-dashboard
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ./apisix-dashboard/conf/conf.yaml:/usr/local/apisix-dashboard/conf/conf.yaml
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.4
+    ports:
+      - "49000:9000"
+
+  apisix:
+    image: apache/apisix
+    container_name: apisix
+    hostname: apisix
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ${DOCKER_VOLUME}/apisix/log:/usr/local/apisix/logs
+      - ./apisix/conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.5
+    external_links:
+      - etcd
+    ports:
+      - "9180:9180"
+      - "9080:9080"
+      - "9091:9091"
+      - "9443:9443"
+      - "9092:9092"
