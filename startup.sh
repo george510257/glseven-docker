@@ -3,6 +3,9 @@
 export DOCKER_VOLUME=/docker/glseven
 
 ## nexus3
+mkdir -p $DOCKER_VOLUME/etcd/data/ && chown -R 1001 $DOCKER_VOLUME/etcd/data/
+
+## nexus3
 mkdir -p $DOCKER_VOLUME/nexus3/data/ && chown -R 200 $DOCKER_VOLUME/nexus3/data/
 
 docker network create --driver=bridge --subnet=172.18.0.0/16 glseven
