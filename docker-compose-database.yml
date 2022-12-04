@@ -158,3 +158,16 @@ services:
         ipv4_address: 172.18.1.9
     ports:
       - "2379:2379"
+
+  elk:
+    image: sebp/elk
+    container_name: elk
+    hostname: elk
+    restart: always
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.10
+    ports:
+      - "5601:5601"
+      - "9200:9200"
+      - "5044:5044"
