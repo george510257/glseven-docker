@@ -160,7 +160,7 @@ services:
       - "2379:2379"
 
   elk:
-    image: sebp/elk:7.17.5
+    image: sebp/elk
     container_name: elk
     hostname: elk
     restart: always
