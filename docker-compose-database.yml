@@ -167,7 +167,7 @@ services:
     env_file:
       - common/env/common.env
     volumes:
-      - ./elk/kibana/config/kibana.yml:/opt/kibana/config/kibana.yml
+#      - ./elk/kibana/config/kibana.yml:/opt/kibana/config/kibana.yml
       - ${DOCKER_VOLUME}/elk/data:/var/lib/elasticsearch
     networks:
       glseven:
