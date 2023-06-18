@@ -32,6 +32,9 @@ services:
     restart: always
     env_file:
       - common/env/common.env
+      - common/env/pandora.env
+    volumes:
+      - ${DOCKER_VOLUME}/pandora/data:/data
     networks:
       glseven:
         ipv4_address: 172.18.2.2
