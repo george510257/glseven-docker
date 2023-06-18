@@ -23,3 +23,17 @@ services:
     ports:
       - "5000:5000"
       - "8081:8081"
+
+
+  pandora:
+    image: pengzhile/pandora
+    container_name: pandora
+    hostname: pandora
+    restart: always
+    env_file:
+      - common/env/common.env
+    networks:
+      glseven:
+        ipv4_address: 172.18.2.2
+    ports:
+      - "8899:8899"
