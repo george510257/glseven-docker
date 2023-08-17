@@ -1630,7 +1630,7 @@
   "tags": [],
   "templating": {
     "list": [
-       {
+      {
         "hide": 0,
         "label": "datasource",
         "name": "DS_PROMETHEUS",
