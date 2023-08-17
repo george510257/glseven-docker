@@ -40,3 +40,19 @@ services:
         ipv4_address: 172.18.2.2
     ports:
       - "8899:8899"
+
+  alist:
+    image: xhofe/alist
+    container_name: alist
+    hostname: alist
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/alist.env
+    volumes:
+      - ${DOCKER_VOLUME}/alist/data:/opt/alist/data
+    networks:
+      glseven:
+        ipv4_address: 172.18.2.3
+    ports:
+      - "5244:5244"
