@@ -6,7 +6,7 @@ networks:
 
 services:
   nacos:
-    image: nacos/nacos-server:v2.2.3
+    image: nacos/nacos-server:v2.3.0
     container_name: nacos
     hostname: nacos
     restart: always
@@ -77,7 +77,7 @@ services:
       - "49000:9000"
 
   apisix:
-    image: apache/apisix:3.6.0-debian
+    image: apache/apisix:3.7.0-debian
     container_name: apisix
     hostname: apisix
     restart: always
