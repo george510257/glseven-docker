@@ -32,7 +32,7 @@ services:
     env_file:
       - common/env/common.env
     volumes:
-      - ${DOCKER_VOLUME}/pandora/data:/data
+      - ./pandora/data:/data
       - ${DOCKER_VOLUME}/pandora/sessions:/root/.cache/PandoraNext
     networks:
       glseven:
