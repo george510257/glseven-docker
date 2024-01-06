@@ -24,7 +24,7 @@ services:
       - "5000:5000"
       - "8081:8081"
 
-  pandora:
+  pandora-next:
     image: pengzhile/pandora-next:0.6.1
     container_name: pandora-next
     hostname: pandora-next
