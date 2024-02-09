@@ -176,3 +176,35 @@ services:
       - "5601:5601"
       - "9200:9200"
       - "5044:5044"
+
+  zookeeper:
+    image: bitnami/zookeeper:3.9.1
+    container_name: zookeeper
+    hostname: zookeeper
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/zookeeper.env
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.11
+    ports:
+      - "2181:2181"
+      - "2888:2888"
+      - "3888:3888"
+
+  kafka:
+    image: bitnami/kafka:3.6.1
+    container_name: kafka
+    hostname: kafka
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/kafka.env
+    depends_on:
+      - zookeeper
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.12
+    ports:
+      - "9092:9092"
