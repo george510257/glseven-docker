@@ -201,8 +201,8 @@ services:
     env_file:
       - common/env/common.env
       - common/env/kafka.env
-    depends_on:
-      - zookeeper
+    volumes:
+      - ${DOCKER_VOLUME}/kafka/data:/bitnami
     networks:
       glseven:
         ipv4_address: 172.18.1.12
