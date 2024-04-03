@@ -8,7 +8,7 @@ services:
 
   # DevOps环境 172.18.2网段 8000端口段 ==================================================================================
   nexus3:
-    image: sonatype/nexus3:3.63.0
+    image: sonatype/nexus3
     container_name: nexus3
     hostname: nexus3
     restart: always
@@ -25,7 +25,7 @@ services:
       - "8081:8081"
 
   pandora-next:
-    image: pengzhile/pandora-next:0.6.1
+    image: pengzhile/pandora-next
     container_name: pandora-next
     hostname: pandora-next
     restart: always
@@ -41,7 +41,7 @@ services:
       - "8181:8181"
 
   alist:
-    image: xhofe/alist:v3.30.0
+    image: xhofe/alist
     container_name: alist
     hostname: alist
     restart: always
