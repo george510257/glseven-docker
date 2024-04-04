@@ -178,7 +178,7 @@ services:
       - "5044:5044"
 
   kafka:
-    image: bitnami/kafka
+    image: bitnami/kafka:3.7.0
     container_name: kafka
     hostname: kafka
     restart: always
