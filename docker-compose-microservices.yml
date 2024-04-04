@@ -50,6 +50,8 @@ services:
     container_name: keycloak
     hostname: keycloak
     restart: always
+    command:
+      - "start-dev"
     env_file:
       - common/env/common.env
       - common/env/keycloak.env
