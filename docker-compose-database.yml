@@ -63,7 +63,7 @@ services:
       - "25672:25672"
 
   mongo:
-    image: mongo:7.0.8
+    image: mongo:7.0.7
     container_name: mongo
     hostname: mongo
     restart: always
