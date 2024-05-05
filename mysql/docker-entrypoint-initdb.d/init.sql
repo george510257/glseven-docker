@@ -10,4 +10,10 @@ CREATE DATABASE `xxl_job` CHARACTER SET 'utf8mb4' COLLATE 'utf8mb4_general_ci';
 CREATE USER `xxl_job`@`%` IDENTIFIED WITH mysql_native_password BY 'xxl_job';
 GRANT ALL PRIVILEGES ON `xxl_job`.* TO `xxl_job`@`%`;
 
+-- 创建数据库 nacos_devtest
+CREATE DATABASE `nacos_devtest` CHARACTER SET 'utf8mb4' COLLATE 'utf8mb4_general_ci';
+-- 创建普通用户 nacos
+CREATE USER `nacos`@`%` IDENTIFIED WITH mysql_native_password BY 'nacos';
+GRANT ALL PRIVILEGES ON `nacos_devtest`.* TO `nacos`@`%`;
+
 flush privileges;
