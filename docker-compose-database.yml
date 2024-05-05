@@ -10,7 +10,7 @@ services:
     container_name: mysql
     hostname: mysql
     restart: always
-    command: ['--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci'] 
+    command: ['--mysql-native-password=ON','--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci'] 
     env_file:
       - common/env/common.env
       - common/env/mysql.env
