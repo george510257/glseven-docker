@@ -50,7 +50,7 @@ services:
     container_name: keycloak
     hostname: keycloak
     restart: always
-    command: start --hostname-port=48081
+    command: start --optimized --hostname-port=48443
     env_file:
       - common/env/common.env
       - common/env/keycloak.env
@@ -60,7 +60,7 @@ services:
     external_links:
       - mysql
     ports:
-      - "48081:8080"
+      - "48443:8443"
 
   apisix-dashboard:
     image: apache/apisix-dashboard
