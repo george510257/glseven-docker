@@ -24,22 +24,6 @@ services:
       - "5000:5000"
       - "8081:8081"
 
-  pandora-next:
-    image: pengzhile/pandora-next
-    container_name: pandora-next
-    hostname: pandora-next
-    restart: always
-    env_file:
-      - common/env/common.env
-    volumes:
-      - ./pandora/data:/data
-      - ${DOCKER_VOLUME}/pandora/sessions:/root/.cache/PandoraNext
-    networks:
-      glseven:
-        ipv4_address: 172.18.2.2
-    ports:
-      - "8181:8181"
-
   alist:
     image: xhofe/alist
     container_name: alist
@@ -52,6 +36,6 @@ services:
       - ${DOCKER_VOLUME}/alist/data:/opt/alist/data
     networks:
       glseven:
-        ipv4_address: 172.18.2.3
+        ipv4_address: 172.18.2.2
     ports:
       - "5244:5244"
