@@ -51,7 +51,7 @@ services:
     hostname: keycloak
     restart: always
     command:
-      - "start-dev"
+      - "start-dev --hostname-port=48081"
     env_file:
       - common/env/common.env
       - common/env/keycloak.env
