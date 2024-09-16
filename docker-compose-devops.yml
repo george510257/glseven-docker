@@ -23,19 +23,3 @@ services:
     ports:
       - "5000:5000"
       - "8081:8081"
-
-  alist:
-    image: xhofe/alist
-    container_name: alist
-    hostname: alist
-    restart: always
-    env_file:
-      - common/env/common.env
-      - common/env/alist.env
-    volumes:
-      - ${DOCKER_VOLUME}/alist/data:/opt/alist/data
-    networks:
-      glseven:
-        ipv4_address: 172.18.2.2
-    ports:
-      - "5244:5244"
