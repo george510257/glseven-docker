@@ -50,7 +50,7 @@ services:
     container_name: keycloak
     hostname: keycloak
     restart: always
-    command: start-dev
+    command: start --optimized --hostname-port=48443
     env_file:
       - common/env/common.env
       - common/env/keycloak.env
@@ -58,7 +58,7 @@ services:
       glseven:
         ipv4_address: 172.18.4.3
     ports:
-      - "48081:8080"
+      - "48443:8443"
 
   apisix-dashboard:
     image: apache/apisix-dashboard
