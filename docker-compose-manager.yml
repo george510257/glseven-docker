@@ -6,7 +6,7 @@ networks:
 
 services:
   portainer:
-    image: portainer/portainer-ce:2.20.0
+    image: portainer/portainer-ce:sts
     container_name: portainer
     hostname: portainer
     restart: always
