@@ -8,6 +8,7 @@ services:
     container_name: mysql
     hostname: mysql
     restart: always
+    user: root
     command: [ '--mysql-native-password=ON','--character-set-server=utf8mb4', '--collation-server=utf8mb4_unicode_ci' ]
     env_file:
       - common/env/common.env
@@ -28,6 +29,7 @@ services:
     container_name: redis
     hostname: redis
     restart: always
+    user: root
     command: redis-server --appendonly yes
     env_file:
       - common/env/common.env
@@ -44,6 +46,7 @@ services:
     container_name: rabbitmq
     hostname: rabbitmq
     restart: always
+    user: root
     env_file:
       - common/env/common.env
     volumes:
@@ -65,6 +68,7 @@ services:
     container_name: mongo
     hostname: mongo
     restart: always
+    user: root
     env_file:
       - common/env/common.env
       - common/env/mongo.env
@@ -82,6 +86,7 @@ services:
     container_name: mongo-express
     hostname: mongo-express
     restart: always
+    user: root
     env_file:
       - common/env/common.env
       - common/env/mongo-express.env
@@ -98,6 +103,7 @@ services:
     container_name: adminer
     hostname: adminer
     restart: always
+    user: root
     networks:
       glseven:
         ipv4_address: 172.18.1.6
@@ -109,6 +115,7 @@ services:
     container_name: openldap
     hostname: openldap
     restart: always
+    user: root
     env_file:
       - common/env/common.env
       - common/env/openldap.env
@@ -127,6 +134,7 @@ services:
     container_name: php-ldap-admin
     hostname: php-ldap-admin
     restart: always
+    user: root
     env_file:
       - common/env/common.env
       - common/env/phpldapadmin.env
@@ -146,6 +154,7 @@ services:
     container_name: etcd
     hostname: etcd
     restart: always
+    user: root
     env_file:
       - common/env/common.env
       - common/env/etcd.env
@@ -162,6 +171,7 @@ services:
     container_name: elk
     hostname: elk
     restart: always
+    user: root
     env_file:
       - common/env/common.env
     volumes:
