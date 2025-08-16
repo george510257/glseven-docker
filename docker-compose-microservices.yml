@@ -23,7 +23,6 @@ services:
       - "8848:8848"
       - "9555:9555"
       - "9848:9848"
-      - "9849:9849"
 
   xxl-job-admin:
     image: xuxueli/xxl-job-admin:3.1.1
