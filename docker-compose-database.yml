@@ -180,6 +180,7 @@ services:
     container_name: kafka
     hostname: kafka
     restart: always
+    user: root
     env_file:
       - common/env/common.env
       - common/env/kafka.env
