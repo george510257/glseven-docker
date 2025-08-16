@@ -2,14 +2,14 @@
 
 export DOCKER_VOLUME=/docker/glseven
 
-### etcd
-#mkdir -p $DOCKER_VOLUME/etcd/data/ && chown -R 1001 $DOCKER_VOLUME/etcd/data/
-#
-### nexus3
-#mkdir -p $DOCKER_VOLUME/nexus3/data/ && chown -R 200 $DOCKER_VOLUME/nexus3/data/
-#
-### prometheus
-#mkdir -p $DOCKER_VOLUME/prometheus/data && chown -R 65534 $DOCKER_VOLUME/prometheus/data
+## etcd
+mkdir -p $DOCKER_VOLUME/etcd/data/ && chown -R 1001 $DOCKER_VOLUME/etcd/data/
+
+## nexus3
+mkdir -p $DOCKER_VOLUME/nexus3/data/ && chown -R 200 $DOCKER_VOLUME/nexus3/data/
+
+## prometheus
+mkdir -p $DOCKER_VOLUME/prometheus/data && chown -R 65534 $DOCKER_VOLUME/prometheus/data
 
 docker network create --driver=bridge --subnet=172.18.0.0/16 glseven
 
