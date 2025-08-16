@@ -77,6 +77,7 @@ services:
     container_name: apisix
     hostname: apisix
     restart: always
+    user: root
     env_file:
       - common/env/common.env
     volumes:
