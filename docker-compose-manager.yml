@@ -8,7 +8,6 @@ services:
     container_name: portainer
     hostname: portainer
     restart: always
-    user: root
     env_file:
       - common/env/common.env
     volumes:
@@ -25,7 +24,6 @@ services:
     container_name: prometheus
     hostname: prometheus
     restart: always
-    user: root
     env_file:
       - common/env/common.env
     volumes:
@@ -42,7 +40,6 @@ services:
     container_name: grafana
     hostname: grafana
     restart: always
-    user: root
     env_file:
       - common/env/common.env
     volumes:

@@ -10,7 +10,6 @@ services:
     container_name: nexus3
     hostname: nexus3
     restart: always
-    user: root
     privileged: true
     env_file:
       - common/env/common.env

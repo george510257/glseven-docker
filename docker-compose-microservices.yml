@@ -8,7 +8,6 @@ services:
     container_name: nacos
     hostname: nacos
     restart: always
-    user: root
     env_file:
       - common/env/common.env
       - common/env/nacos.env
@@ -30,7 +29,6 @@ services:
     container_name: xxl-job-admin
     hostname: xxl-job-admin
     restart: always
-    user: root
     env_file:
       - common/env/common.env
     volumes:
@@ -49,7 +47,6 @@ services:
     container_name: keycloak
     hostname: keycloak
     restart: always
-    user: root
     command: start-dev
     env_file:
       - common/env/common.env
@@ -65,7 +62,6 @@ services:
     container_name: apisix-dashboard
     hostname: apisix-dashboard
     restart: always
-    user: root
     env_file:
       - common/env/common.env
     volumes:
@@ -104,7 +100,6 @@ services:
     container_name: ollama
     hostname: ollama
     restart: always
-    user: root
     env_file:
       - common/env/common.env
     volumes:
