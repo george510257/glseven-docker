@@ -43,7 +43,7 @@ create table `config_info`
   collate = utf8_bin comment ='config_info';
 
 /******************************************/
-/*   表名称 = config_info  since 2.5.0                */
+/*   表名称 = config_info  since 2.5.0     */
 /******************************************/
 create table `config_info_gray`
 (

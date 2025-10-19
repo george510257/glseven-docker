@@ -40,7 +40,7 @@ services:
       - "6379:6379"
 
   rabbitmq:
-    image: rabbitmq:management-alpine
+    image: rabbitmq:management
     container_name: rabbitmq
     hostname: rabbitmq
     restart: always
@@ -61,7 +61,7 @@ services:
       - "25672:25672"
 
   mongo:
-    image: mongo:7.0.23
+    image: mongo
     container_name: mongo
     hostname: mongo
     restart: always

@@ -25,7 +25,7 @@ services:
       - "9848:9848"
 
   xxl-job-admin:
-    image: xuxueli/xxl-job-admin:3.1.1
+    image: xuxueli/xxl-job-admin:3.2.0
     container_name: xxl-job-admin
     hostname: xxl-job-admin
     restart: always
@@ -94,18 +94,3 @@ services:
       - "9091:9091"
       - "9443:9443"
       - "9092:9092"
-
-  ollama:
-    image: ollama/ollama
-    container_name: ollama
-    hostname: ollama
-    restart: always
-    env_file:
-      - common/env/common.env
-    volumes:
-      - ${DOCKER_VOLUME}/ollama/data:/root/.ollama
-    networks:
-      glseven:
-        ipv4_address: 172.18.4.6
-    ports:
-      - "11434:11434"
