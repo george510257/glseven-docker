@@ -7,6 +7,34 @@ use `xxl_job`;
 
 set names utf8mb4;
 
+## —————————————————————— job group and registry ——————————————————
+
+create table `xxl_job_group`
+(
+    `id`           int(11)     not null auto_increment,
+    `app_name`     varchar(64) not null comment '执行器appname',
+    `title`        varchar(12) not null comment '执行器名称',
+    `address_type` tinyint(4)  not null default '0' comment '执行器地址类型：0=自动注册、1=手动录入',
+    `address_list` text comment '执行器地址列表，多地址逗号分隔',
+    `update_time`  datetime             default null,
+    primary key (`id`)
+) engine = innodb
+  default charset = utf8mb4;
+
+create table `xxl_job_registry`
+(
+    `id`             int(11)      not null auto_increment,
+    `registry_group` varchar(50)  not null,
+    `registry_key`   varchar(255) not null,
+    `registry_value` varchar(255) not null,
+    `update_time`    datetime default null,
+    primary key (`id`),
+    unique key `i_g_k_v` (`registry_group`, `registry_key`, `registry_value`) using btree
+) engine = innodb
+  default charset = utf8mb4;
+
+## —————————————————————— job info ——————————————————
+
 create table `xxl_job_info`
 (
     `id`                        int(11)      not null auto_increment,
@@ -36,6 +64,21 @@ create table `xxl_job_info`
     primary key (`id`)
 ) engine = innodb
   default charset = utf8mb4;
+
+create table `xxl_job_logglue`
+(
+    `id`          int(11)      not null auto_increment,
+    `job_id`      int(11)      not null comment '任务，主键id',
+    `glue_type`   varchar(50) default null comment 'glue类型',
+    `glue_source` mediumtext comment 'glue源代码',
+    `glue_remark` varchar(128) not null comment 'glue备注',
+    `add_time`    datetime    default null,
+    `update_time` datetime    default null,
+    primary key (`id`)
+) engine = innodb
+  default charset = utf8mb4;
+
+## —————————————————————— job log and report ——————————————————
 
 create table `xxl_job_log`
 (
@@ -75,54 +118,7 @@ create table `xxl_job_log_report`
 ) engine = innodb
   default charset = utf8mb4;
 
-create table `xxl_job_logglue`
-(
-    `id`          int(11)      not null auto_increment,
-    `job_id`      int(11)      not null comment '任务，主键id',
-    `glue_type`   varchar(50) default null comment 'glue类型',
-    `glue_source` mediumtext comment 'glue源代码',
-    `glue_remark` varchar(128) not null comment 'glue备注',
-    `add_time`    datetime    default null,
-    `update_time` datetime    default null,
-    primary key (`id`)
-) engine = innodb
-  default charset = utf8mb4;
-
-create table `xxl_job_registry`
-(
-    `id`             int(11)      not null auto_increment,
-    `registry_group` varchar(50)  not null,
-    `registry_key`   varchar(255) not null,
-    `registry_value` varchar(255) not null,
-    `update_time`    datetime default null,
-    primary key (`id`),
-    unique key `i_g_k_v` (`registry_group`, `registry_key`, `registry_value`) using btree
-) engine = innodb
-  default charset = utf8mb4;
-
-create table `xxl_job_group`
-(
-    `id`           int(11)     not null auto_increment,
-    `app_name`     varchar(64) not null comment '执行器appname',
-    `title`        varchar(12) not null comment '执行器名称',
-    `address_type` tinyint(4)  not null default '0' comment '执行器地址类型：0=自动注册、1=手动录入',
-    `address_list` text comment '执行器地址列表，多地址逗号分隔',
-    `update_time`  datetime             default null,
-    primary key (`id`)
-) engine = innodb
-  default charset = utf8mb4;
-
-create table `xxl_job_user`
-(
-    `id`         int(11)     not null auto_increment,
-    `username`   varchar(50) not null comment '账号',
-    `password`   varchar(50) not null comment '密码',
-    `role`       tinyint(4)  not null comment '角色：0-普通用户、1-管理员',
-    `permission` varchar(255) default null comment '权限：执行器id列表，多个逗号分割',
-    primary key (`id`),
-    unique key `i_username` (`username`) using btree
-) engine = innodb
-  default charset = utf8mb4;
+## —————————————————————— lock ——————————————————
 
 create table `xxl_job_lock`
 (
@@ -131,8 +127,23 @@ create table `xxl_job_lock`
 ) engine = innodb
   default charset = utf8mb4;
 
+## —————————————————————— user ——————————————————
 
-## —————————————————————— init data ——————————————————
+create table `xxl_job_user`
+(
+    `id`         int(11)      not null auto_increment,
+    `username`   varchar(50)  not null comment '账号',
+    `password`   varchar(100) not null comment '密码加密信息',
+    `token`      varchar(100) default null comment '登录token',
+    `role`       tinyint(4)   not null comment '角色：0-普通用户、1-管理员',
+    `permission` varchar(255) default null comment '权限：执行器id列表，多个逗号分割',
+    primary key (`id`),
+    unique key `i_username` (`username`) using btree
+) engine = innodb
+  default charset = utf8mb4;
+
+
+## —————————————————————— for default data ——————————————————
 
 insert into `xxl_job_group`(`id`, `app_name`, `title`, `address_type`, `address_list`, `update_time`)
 values (1, 'xxl-job-executor-sample', '通用执行器sample', 0, null, now()),
@@ -149,7 +160,8 @@ values (1, 1, '示例任务01', now(), now(), 'xxl', '', 'cron', '0 0 0 * * ? *'
        (2, 2, 'ollama示例任务01', now(), now(), 'xxl', '', 'none', '',
         'do_nothing', 'first', 'ollamajobhandler', '{
     "input": "慢sql问题分析思路",
-    "prompt": "你是一个研发工程师，擅长解决技术类问题。"
+    "prompt": "你是一个研发工程师，擅长解决技术类问题。",
+    "model": "qwen3:0.6b"
 }', 'serial_execution', 0, 0, 'bean', '', 'glue代码初始化',
         now(), ''),
        (3, 2, 'dify示例任务', now(), now(), 'xxl', '', 'none', '',
@@ -161,11 +173,10 @@ values (1, 1, '示例任务01', now(), now(), 'xxl', '', 'cron', '0 0 0 * * ? *'
     "baseurl": "http://localhost/v1",
     "apikey": "app-ouvgnuoqrimokfmujvbjoutn"
 }', 'serial_execution', 0, 0, 'bean', '', 'glue代码初始化',
-        now(), '')
-;
+        now(), '');
 
 insert into `xxl_job_user`(`id`, `username`, `password`, `role`, `permission`)
-values (1, 'admin', 'e10adc3949ba59abbe56e057f20f883e', 1, null);
+values (1, 'admin', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', 1, null);
 
 insert into `xxl_job_lock` (`lock_name`)
 values ('schedule_lock');
