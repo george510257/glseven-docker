@@ -168,7 +168,9 @@ services:
       - common/env/common.env
       - common/env/kafka.env
     volumes:
-      - ${DOCKER_VOLUME}/kafka/data:/bitnami
+      - ${DOCKER_VOLUME}/kafka/config:/mnt/shared/config
+      - ${DOCKER_VOLUME}/kafka/data:/var/lib/kafka/data
+      - ${DOCKER_VOLUME}/kafka/secrets:/etc/kafka/secrets
     networks:
       glseven:
         ipv4_address: 172.18.1.10
