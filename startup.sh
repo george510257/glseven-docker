@@ -2,9 +2,6 @@
 
 export DOCKER_VOLUME=/docker/glseven
 
-## etcd
-mkdir -p $DOCKER_VOLUME/etcd/data/ && chown -R 1001 $DOCKER_VOLUME/etcd/data/
-
 ## nexus3
 mkdir -p $DOCKER_VOLUME/nexus3/data/ && chown -R 200 $DOCKER_VOLUME/nexus3/data/
 
