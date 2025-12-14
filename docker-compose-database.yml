@@ -175,4 +175,4 @@ services:
       glseven:
         ipv4_address: 172.18.1.10
     ports:
-      - "19092:9092"
+      - "9092:9092"
