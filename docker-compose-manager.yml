@@ -60,6 +60,8 @@ services:
     env_file:
       - common/env/common.env
       - common/env/moontv.env
+    external_links:
+      - redis
     networks:
       glseven:
           ipv4_address: 172.18.3.4
