@@ -64,6 +64,20 @@ services:
       - redis
     networks:
       glseven:
-          ipv4_address: 172.18.3.4
+        ipv4_address: 172.18.3.4
     ports:
       - "3001:3000"
+
+  libretv:
+    image: bestzwei/libretv
+    container_name: libretv
+    hostname: libretv
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/libretv.env
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.5
+    ports:
+      - "8899:8080"
