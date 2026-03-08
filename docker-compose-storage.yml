@@ -7,7 +7,7 @@ services:
   # Storage 172.18.1.x ================================================================================================
 
   mysql:
-    image: mysql:8.4
+    image: mysql:8.4.8
     container_name: mysql
     hostname: mysql
     restart: always
@@ -23,14 +23,22 @@ services:
         ipv4_address: 172.18.1.1
     ports:
       - "3306:3306"
-      - "33060:33060"
+      # Port 33060 (MySQL X Protocol) is not used by any service; removed to reduce attack surface.
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-uroot", "-p${MYSQL_ROOT_PASSWORD}", "--silent" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   redis:
-    image: redis:7.4
+    image: redis:8.6.1
     container_name: redis
     hostname: redis
     restart: always
-    command: redis-server --appendonly yes
+    # --requirepass enables password authentication.
+    # Update REDIS_PASSWORD here and in common/env/moontv.env if you change it.
+    command: redis-server --appendonly yes --requirepass glseven_redis_2024
     env_file:
       - common/env/common.env
     volumes:
@@ -57,6 +65,12 @@ services:
         ipv4_address: 172.18.1.3
     ports:
       - "27017:27017"
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   mongo-express:
     image: mongo-express:1.0
@@ -68,7 +82,7 @@ services:
       - common/env/mongo-express.env
     depends_on:
       mongo:
-        condition: service_started
+        condition: service_healthy
     networks:
       glseven:
         ipv4_address: 172.18.1.4
@@ -76,13 +90,13 @@ services:
       - "18081:8081"
 
   adminer:
-    image: adminer:4
+    image: adminer:5.4.2
     container_name: adminer
     hostname: adminer
     restart: always
     depends_on:
       mysql:
-        condition: service_started
+        condition: service_healthy
     networks:
       glseven:
         ipv4_address: 172.18.1.5

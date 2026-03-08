@@ -7,5 +7,8 @@ providers:
     type: file
     disableDeletion: false
     editable: false
+    # Dashboard JSON files should be placed in grafana/conf/dashboards/.
+    # The directory is currently empty; add *.json dashboard exports here
+    # and they will be auto-provisioned on Grafana startup.
     options:
       path: /var/lib/grafana/dashboards

@@ -5,6 +5,9 @@ set -e
 # DOCKER_VOLUME 外部传入，默认值为 /docker/glseven
 export DOCKER_VOLUME=${1:-/docker/glseven}
 
+# 读取 MySQL root 密码（供 mysqladmin ping 使用）
+MYSQL_ROOT_PASSWORD=$(grep '^MYSQL_ROOT_PASSWORD=' common/env/mysql.env | cut -d= -f2-)
+
 echo "==========================================="
 echo "启动 GLSeven Docker 容器..."
 echo "DOCKER_VOLUME: $DOCKER_VOLUME"
@@ -38,7 +41,7 @@ docker compose -f docker-compose-monitor.yml    -p monitor    up -d && echo "✓
 echo "Waiting for MySQL to be ready..."
 MYSQL_WAIT_TIMEOUT=120
 MYSQL_WAIT_COUNT=0
-until docker exec storage-mysql-1 mysqladmin ping -uroot --silent 2>/dev/null; do
+until docker exec mysql mysqladmin ping -uroot -p"$MYSQL_ROOT_PASSWORD" --silent 2>/dev/null; do
   MYSQL_WAIT_COUNT=$((MYSQL_WAIT_COUNT + 1))
   if [ $MYSQL_WAIT_COUNT -ge $MYSQL_WAIT_TIMEOUT ]; then
     echo "Error: MySQL did not become ready within ${MYSQL_WAIT_TIMEOUT} seconds. Aborting."

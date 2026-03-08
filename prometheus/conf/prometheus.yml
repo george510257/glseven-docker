@@ -11,6 +11,8 @@ scrape_configs:
       - targets: [ "rabbitmq:15692" ]
 
   - job_name: "nacos"
+    # Nacos v3 Actuator endpoints are served on port 8080 (console port),
+    # not port 8848 (API/config port).
     metrics_path: "/nacos/actuator/prometheus"
     static_configs:
-      - targets: [ "nacos:8848" ]
+      - targets: [ "nacos:8080" ]

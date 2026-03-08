@@ -7,7 +7,7 @@ services:
   # Messaging 172.18.2.x ==============================================================================================
 
   rabbitmq:
-    image: rabbitmq:4.0-management
+    image: rabbitmq:4.2.4-management
     container_name: rabbitmq
     hostname: rabbitmq
     restart: always
@@ -27,7 +27,7 @@ services:
       - "15675:15675"
 
   kafka:
-    image: apache/kafka:3.9
+    image: apache/kafka:4.2.0
     container_name: kafka
     hostname: kafka
     restart: always

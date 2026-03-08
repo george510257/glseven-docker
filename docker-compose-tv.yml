@@ -7,7 +7,7 @@ services:
   # TV 172.18.8.x ======================================================================================================
 
   moontv:
-    image: ghcr.io/moontechlab/lunatv:latest
+    image: ghcr.io/moontechlab/lunatv:v100.1.1
     container_name: moontv
     hostname: moontv
     restart: always
@@ -21,7 +21,7 @@ services:
       - "3001:3000"
 
   libretv:
-    image: bestzwei/libretv:latest
+    image: bestzwei/libretv:202508060117
     container_name: libretv
     hostname: libretv
     restart: always
