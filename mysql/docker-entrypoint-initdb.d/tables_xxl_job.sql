@@ -171,7 +171,7 @@ values (1, 1, '示例任务01', now(), now(), 'xxl', '', 'cron', '0 0 0 * * ? *'
     },
     "user": "xxl-job",
     "baseurl": "http://localhost/v1",
-    "apikey": "app-ouvgnuoqrimokfmujvbjoutn"
+    "apikey": "your-dify-api-key-here"
 }', 'serial_execution', 0, 0, 'bean', '', 'glue代码初始化',
         now(), '');
 

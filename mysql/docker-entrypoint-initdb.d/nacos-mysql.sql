@@ -41,8 +41,8 @@ create table `config_info`
     primary key (`id`),
     unique key `uk_configinfo_datagrouptenant` (`data_id`, `group_id`, `tenant_id`)
 ) engine = innodb
-  default charset = utf8
-  collate = utf8_bin comment ='config_info';
+  default charset = utf8mb4
+  collate = utf8mb4_general_ci comment ='config_info';
 
 /******************************************/
 /*   表名称 = config_info  since 2.5.0     */
@@ -69,7 +69,7 @@ create table `config_info_gray`
     key `idx_gmt_modified` (`gmt_modified`)
 ) engine = innodb
   auto_increment = 1
-  default charset = utf8 comment ='config_info_gray';
+  default charset = utf8mb4 comment ='config_info_gray';
 
 /******************************************/
 /*   表名称 = config_tags_relation         */
@@ -87,8 +87,8 @@ create table `config_tags_relation`
     unique key `uk_configtagrelation_configidtag` (`id`, `tag_name`, `tag_type`),
     key `idx_tenant_id` (`tenant_id`)
 ) engine = innodb
-  default charset = utf8
-  collate = utf8_bin comment ='config_tag_relation';
+  default charset = utf8mb4
+  collate = utf8mb4_general_ci comment ='config_tag_relation';
 
 /******************************************/
 /*   表名称 = group_capacity               */
@@ -108,8 +108,8 @@ create table `group_capacity`
     primary key (`id`),
     unique key `uk_group_id` (`group_id`)
 ) engine = innodb
-  default charset = utf8
-  collate = utf8_bin comment ='集群、各group容量信息表';
+  default charset = utf8mb4
+  collate = utf8mb4_general_ci comment ='集群、各group容量信息表';
 
 /******************************************/
 /*   表名称 = his_config_info              */
@@ -138,8 +138,8 @@ create table `his_config_info`
     key `idx_gmt_modified` (`gmt_modified`),
     key `idx_did` (`data_id`)
 ) engine = innodb
-  default charset = utf8
-  collate = utf8_bin comment ='多租户改造';
+  default charset = utf8mb4
+  collate = utf8mb4_general_ci comment ='多租户改造';
 
 
 /******************************************/
@@ -160,8 +160,8 @@ create table `tenant_capacity`
     primary key (`id`),
     unique key `uk_tenant_id` (`tenant_id`)
 ) engine = innodb
-  default charset = utf8
-  collate = utf8_bin comment ='租户容量信息表';
+  default charset = utf8mb4
+  collate = utf8mb4_general_ci comment ='租户容量信息表';
 
 
 create table `tenant_info`
@@ -178,8 +178,8 @@ create table `tenant_info`
     unique key `uk_tenant_info_kptenantid` (`kp`, `tenant_id`),
     key `idx_tenant_id` (`tenant_id`)
 ) engine = innodb
-  default charset = utf8
-  collate = utf8_bin comment ='tenant_info';
+  default charset = utf8mb4
+  collate = utf8mb4_general_ci comment ='tenant_info';
 
 create table `users`
 (

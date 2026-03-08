@@ -21,10 +21,10 @@ services:
       glseven:
         ipv4_address: 172.18.2.1
     ports:
-      - "35672:5672"
-      - "15672:15672"
-      - "1883:1883"
-      - "15675:15675"
+      - "35672:5672"   # AMQP
+      - "15672:15672"  # Management UI
+      - "1883:1883"    # MQTT
+      - "15675:15675"  # MQTT over WebSocket
 
   kafka:
     image: apache/kafka:4.2.0

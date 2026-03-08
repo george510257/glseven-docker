@@ -12,7 +12,7 @@ server.host: "0.0.0.0"
 
 # Elasticsearch connection. In Kibana v8+, 'elasticsearch.url' is replaced by
 # 'elasticsearch.hosts' (array). The sebp/elk image runs Elasticsearch on localhost.
-elasticsearch.hosts: ["http://localhost:9200"]
+elasticsearch.hosts: [ "http://localhost:9200" ]
 
 # Display language.
 i18n.locale: "zh-CN"

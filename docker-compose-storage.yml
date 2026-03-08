@@ -48,6 +48,12 @@ services:
         ipv4_address: 172.18.1.2
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "glseven_redis_2024", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   mongo:
     image: mongo:8.0.19
