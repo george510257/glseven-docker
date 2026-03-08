@@ -25,7 +25,7 @@ services:
       - "9848:9848"
 
   xxl-job-admin:
-    image: xuxueli/xxl-job-admin:3.2.0
+    image: xuxueli/xxl-job-admin:3.3.2
     container_name: xxl-job-admin
     hostname: xxl-job-admin
     restart: always
