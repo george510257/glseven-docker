@@ -1,0 +1,45 @@
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Auth 172.18.3.x ====================================================================================================
+
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: openldap
+    hostname: openldap
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/openldap.env
+    volumes:
+      - ${DOCKER_VOLUME}/openldap/data:/var/lib/ldap
+      - ${DOCKER_VOLUME}/openldap/config:/etc/ldap/slapd.d
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.1
+    ports:
+      - "389:389"
+      - "636:636"
+
+  php-ldap-admin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: php-ldap-admin
+    hostname: php-ldap-admin
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/phpldapadmin.env
+    volumes:
+      - ${DOCKER_VOLUME}/phpldapadmin/data:/var/www/phpldapadmin
+    depends_on:
+      openldap:
+        condition: service_started
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.2
+    ports:
+      - "6080:80"
+      - "6443:443"

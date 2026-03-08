@@ -1,0 +1,45 @@
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Messaging 172.18.2.x ==============================================================================================
+
+  rabbitmq:
+    image: rabbitmq:4.0-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/rabbitmq.env
+    volumes:
+      - ${DOCKER_VOLUME}/rabbitmq/data:/var/lib/rabbitmq
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+    networks:
+      glseven:
+        ipv4_address: 172.18.2.1
+    ports:
+      - "35672:5672"
+      - "15672:15672"
+      - "1883:1883"
+      - "15675:15675"
+
+  kafka:
+    image: apache/kafka:3.9
+    container_name: kafka
+    hostname: kafka
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/kafka.env
+    volumes:
+      - ${DOCKER_VOLUME}/kafka/config:/mnt/shared/config
+      - ${DOCKER_VOLUME}/kafka/data:/var/lib/kafka/data
+      - ${DOCKER_VOLUME}/kafka/secrets:/etc/kafka/secrets
+    networks:
+      glseven:
+        ipv4_address: 172.18.2.2
+    ports:
+      - "9092:9092"

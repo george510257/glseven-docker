@@ -1,0 +1,90 @@
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Storage 172.18.1.x ================================================================================================
+
+  mysql:
+    image: mysql:8.4
+    container_name: mysql
+    hostname: mysql
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/mysql.env
+    volumes:
+      - ${DOCKER_VOLUME}/mysql/data:/var/lib/mysql
+      - ${DOCKER_VOLUME}/mysql/conf.d:/etc/mysql/conf.d
+      - ./mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.1
+    ports:
+      - "3306:3306"
+      - "33060:33060"
+
+  redis:
+    image: redis:7.4
+    container_name: redis
+    hostname: redis
+    restart: always
+    command: redis-server --appendonly yes
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ${DOCKER_VOLUME}/redis/data:/data
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.2
+    ports:
+      - "6379:6379"
+
+  mongo:
+    image: mongo:8.0
+    container_name: mongo
+    hostname: mongo
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/mongo.env
+    volumes:
+      - ${DOCKER_VOLUME}/mongo/data/db:/data/db
+      - ${DOCKER_VOLUME}/mongo/data/configdb:/data/configdb
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.3
+    ports:
+      - "27017:27017"
+
+  mongo-express:
+    image: mongo-express:1.0
+    container_name: mongo-express
+    hostname: mongo-express
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/mongo-express.env
+    depends_on:
+      mongo:
+        condition: service_started
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.4
+    ports:
+      - "18081:8081"
+
+  adminer:
+    image: adminer:4
+    container_name: adminer
+    hostname: adminer
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_started
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.5
+    ports:
+      - "18080:8080"

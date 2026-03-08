@@ -1,0 +1,62 @@
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Monitor 172.18.4.x =================================================================================================
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    container_name: prometheus
+    hostname: prometheus
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ./prometheus/conf/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ${DOCKER_VOLUME}/prometheus/data:/prometheus
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.1
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    container_name: grafana
+    hostname: grafana
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ./grafana/conf/provisioning:/etc/grafana/provisioning
+      - ./grafana/conf/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/conf/config/grafana.ini:/etc/grafana/grafana.ini
+      - ${DOCKER_VOLUME}/grafana/data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_started
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.2
+    ports:
+      - "3000:3000"
+
+  elk:
+    image: sebp/elk:8.15.0
+    container_name: elk
+    hostname: elk
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ./elk/kibana/config/kibana.yml:/opt/kibana/config/kibana.yml
+      - ${DOCKER_VOLUME}/elk/data:/var/lib/elasticsearch
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.3
+    ports:
+      - "5601:5601"
+      - "9200:9200"
+      - "5044:5044"

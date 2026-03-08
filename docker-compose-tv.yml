@@ -3,8 +3,11 @@ networks:
     external: true
 
 services:
+
+  # TV 172.18.8.x ======================================================================================================
+
   moontv:
-    image: ghcr.io/moontechlab/lunatv
+    image: ghcr.io/moontechlab/lunatv:latest
     container_name: moontv
     hostname: moontv
     restart: always
@@ -13,12 +16,12 @@ services:
       - common/env/moontv.env
     networks:
       glseven:
-        ipv4_address: 172.18.5.1
+        ipv4_address: 172.18.8.1
     ports:
       - "3001:3000"
 
   libretv:
-    image: bestzwei/libretv
+    image: bestzwei/libretv:latest
     container_name: libretv
     hostname: libretv
     restart: always
@@ -27,6 +30,6 @@ services:
       - common/env/libretv.env
     networks:
       glseven:
-        ipv4_address: 172.18.5.2
+        ipv4_address: 172.18.8.2
     ports:
       - "8899:8080"

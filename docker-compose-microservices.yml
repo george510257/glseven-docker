@@ -3,8 +3,11 @@ networks:
     external: true
 
 services:
+
+  # Microservices 172.18.7.x ===========================================================================================
+
   nacos:
-    image: nacos/nacos-server
+    image: nacos/nacos-server:v3.0.1
     container_name: nacos
     hostname: nacos
     restart: always
@@ -16,9 +19,7 @@ services:
       - ./nacos/config/custom.properties:/home/nacos/init.d/custom.properties
     networks:
       glseven:
-        ipv4_address: 172.18.4.1
-    external_links:
-      - mysql
+        ipv4_address: 172.18.7.1
     ports:
       - "48081:8080"
       - "8848:8848"
@@ -36,8 +37,6 @@ services:
       - ./xxl-job-admin/application.properties:/application.properties
     networks:
       glseven:
-        ipv4_address: 172.18.4.2
-    external_links:
-      - mysql
+        ipv4_address: 172.18.7.2
     ports:
       - "48080:8080"
