@@ -6,7 +6,7 @@ services:
 
   # DevOps环境 172.18.2网段 8000端口段 ==================================================================================
   nexus3:
-    image: sonatype/nexus3
+    image: sonatype/nexus3:3.90.1
     container_name: nexus3
     hostname: nexus3
     restart: always
