@@ -1,0 +1,50 @@
+networks:
+  glseven:
+    external: true
+
+services:
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    hostname: ollama
+    restart: always
+    tty: true
+    env_file:
+      - common/env/common.env
+      - common/env/ollama.env
+    volumes:
+      - ${DOCKER_VOLUME}/ollama:/root/.ollama
+    networks:
+      glseven:
+        ipv4_address: 172.18.6.1
+    ports:
+      - "11434:11434"
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: all
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    hostname: open-webui
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/open-webui.env
+    volumes:
+      - ${DOCKER_VOLUME}/open-webui/data:/app/backend/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      glseven:
+        ipv4_address: 172.18.6.2
+    ports:
+      - "8080:8080"
