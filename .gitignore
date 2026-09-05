@@ -15,3 +15,6 @@ data/
 # Editor swap files
 *.swp
 *.swo
+
+# Git worktrees (isolated workspaces)
+.worktrees/
