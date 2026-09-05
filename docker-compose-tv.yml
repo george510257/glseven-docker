@@ -1,3 +1,5 @@
+name: tv
+
 networks:
   glseven:
     external: true
@@ -14,6 +16,9 @@ services:
     env_file:
       - common/env/common.env
       - common/env/moontv.env
+    environment:
+      # Overrides REDIS_URL from moontv.env; password sourced from .env (REDIS_PASSWORD).
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-glseven_redis_2024}@redis:6379"
     networks:
       glseven:
         ipv4_address: 172.18.8.1

@@ -12,6 +12,9 @@ Thumbs.db
 # Runtime data volumes (if DOCKER_VOLUME is set inside the project)
 data/
 
+# Local environment secrets (cp .env.example .env)
+.env
+
 # Editor swap files
 *.swp
 *.swo
