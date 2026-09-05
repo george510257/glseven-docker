@@ -1,3 +1,5 @@
+name: devops
+
 networks:
   glseven:
     external: true
@@ -14,7 +16,7 @@ services:
     env_file:
       - common/env/common.env
     volumes:
-      - ${DOCKER_VOLUME}/nexus3/data:/nexus-data
+      - ${DOCKER_VOLUME:-/docker/glseven}/nexus3/data:/nexus-data
     networks:
       glseven:
         ipv4_address: 172.18.6.1

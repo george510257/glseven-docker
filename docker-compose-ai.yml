@@ -1,3 +1,5 @@
+name: ai
+
 networks:
   glseven:
     external: true
@@ -16,7 +18,7 @@ services:
       - common/env/common.env
       - common/env/ollama.env
     volumes:
-      - ${DOCKER_VOLUME}/ollama:/root/.ollama
+      - ${DOCKER_VOLUME:-/docker/glseven}/ollama:/root/.ollama
     networks:
       glseven:
         ipv4_address: 172.18.9.1
@@ -48,7 +50,7 @@ services:
       - common/env/common.env
       - common/env/open-webui.env
     volumes:
-      - ${DOCKER_VOLUME}/open-webui/data:/app/backend/data
+      - ${DOCKER_VOLUME:-/docker/glseven}/open-webui/data:/app/backend/data
     depends_on:
       ollama:
         condition: service_healthy

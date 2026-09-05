@@ -1,3 +1,5 @@
+name: auth
+
 networks:
   glseven:
     external: true
@@ -15,8 +17,8 @@ services:
       - common/env/common.env
       - common/env/openldap.env
     volumes:
-      - ${DOCKER_VOLUME}/openldap/data:/var/lib/ldap
-      - ${DOCKER_VOLUME}/openldap/config:/etc/ldap/slapd.d
+      - ${DOCKER_VOLUME:-/docker/glseven}/openldap/data:/var/lib/ldap
+      - ${DOCKER_VOLUME:-/docker/glseven}/openldap/config:/etc/ldap/slapd.d
     networks:
       glseven:
         ipv4_address: 172.18.3.1
@@ -33,7 +35,7 @@ services:
       - common/env/common.env
       - common/env/phpldapadmin.env
     volumes:
-      - ${DOCKER_VOLUME}/phpldapadmin/data:/var/www/phpldapadmin
+      - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/data:/var/www/phpldapadmin
     depends_on:
       openldap:
         condition: service_started

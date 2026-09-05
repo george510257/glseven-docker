@@ -1,3 +1,5 @@
+name: messaging
+
 networks:
   glseven:
     external: true
@@ -15,7 +17,7 @@ services:
       - common/env/common.env
       - common/env/rabbitmq.env
     volumes:
-      - ${DOCKER_VOLUME}/rabbitmq/data:/var/lib/rabbitmq
+      - ${DOCKER_VOLUME:-/docker/glseven}/rabbitmq/data:/var/lib/rabbitmq
       - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
     networks:
       glseven:
@@ -35,9 +37,9 @@ services:
       - common/env/common.env
       - common/env/kafka.env
     volumes:
-      - ${DOCKER_VOLUME}/kafka/config:/mnt/shared/config
-      - ${DOCKER_VOLUME}/kafka/data:/var/lib/kafka/data
-      - ${DOCKER_VOLUME}/kafka/secrets:/etc/kafka/secrets
+      - ${DOCKER_VOLUME:-/docker/glseven}/kafka/config:/mnt/shared/config
+      - ${DOCKER_VOLUME:-/docker/glseven}/kafka/data:/var/lib/kafka/data
+      - ${DOCKER_VOLUME:-/docker/glseven}/kafka/secrets:/etc/kafka/secrets
     networks:
       glseven:
         ipv4_address: 172.18.2.2
