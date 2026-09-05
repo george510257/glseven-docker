@@ -2,21 +2,27 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common/compose-list.sh
+source "$SCRIPT_DIR/common/compose-list.sh"
+cd "$SCRIPT_DIR"
+
 echo "==========================================="
 echo "停止 GLSeven Docker 容器..."
 echo "==========================================="
 
-# 按启动顺序的反向停止所有服务
+# 按启动顺序（BASE + DEFERRED 拼接）的逆序停止所有服务
+stop_all() {
+  local -a groups=("$@")
+  local i group
+  for (( i=${#groups[@]}-1; i>=0; i-- )); do
+    group=${groups[$i]}
+    docker compose -f "docker-compose-${group}.yml" down 2>/dev/null && echo "✓ ${group} services stopped" || echo "- ${group} not running"
+  done
+}
+
 echo "Stopping services..."
-docker compose -f docker-compose-ai.yml            -p ai            down 2>/dev/null && echo "✓ AI services stopped"       || echo "- AI not running"
-docker compose -f docker-compose-tv.yml            -p tv            down 2>/dev/null && echo "✓ TV services stopped"       || echo "- TV not running"
-docker compose -f docker-compose-microservices.yml -p microservices down 2>/dev/null && echo "✓ Microservices stopped"     || echo "- Microservices not running"
-docker compose -f docker-compose-monitor.yml       -p monitor       down 2>/dev/null && echo "✓ Monitor services stopped"  || echo "- Monitor not running"
-docker compose -f docker-compose-manager.yml       -p manager       down 2>/dev/null && echo "✓ Manager services stopped"  || echo "- Manager not running"
-docker compose -f docker-compose-devops.yml        -p devops        down 2>/dev/null && echo "✓ DevOps services stopped"   || echo "- DevOps not running"
-docker compose -f docker-compose-auth.yml          -p auth          down 2>/dev/null && echo "✓ Auth services stopped"     || echo "- Auth not running"
-docker compose -f docker-compose-messaging.yml     -p messaging     down 2>/dev/null && echo "✓ Messaging services stopped" || echo "- Messaging not running"
-docker compose -f docker-compose-storage.yml       -p storage       down 2>/dev/null && echo "✓ Storage services stopped"  || echo "- Storage not running"
+stop_all "${COMPOSE_FILES_BASE[@]}" "${COMPOSE_FILES_DEFERRED[@]}"
 
 # 移除网络（幂等，不存在则跳过）
 if docker network inspect glseven &>/dev/null; then

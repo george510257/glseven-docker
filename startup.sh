@@ -5,8 +5,10 @@ set -e
 # DOCKER_VOLUME 外部传入，默认值为 /docker/glseven
 export DOCKER_VOLUME=${1:-/docker/glseven}
 
-# 读取 MySQL root 密码（供 mysqladmin ping 使用）
-MYSQL_ROOT_PASSWORD=$(grep '^MYSQL_ROOT_PASSWORD=' common/env/mysql.env | cut -d= -f2-)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common/compose-list.sh
+source "$SCRIPT_DIR/common/compose-list.sh"
+cd "$SCRIPT_DIR"
 
 echo "==========================================="
 echo "启动 GLSeven Docker 容器..."
@@ -28,33 +30,32 @@ else
   echo "Network glseven already exists, skipping."
 fi
 
-# 启动核心服务
-echo "Starting services..."
-docker compose -f docker-compose-storage.yml    -p storage    up -d && echo "✓ Storage services started"
-docker compose -f docker-compose-messaging.yml  -p messaging  up -d && echo "✓ Messaging services started"
-docker compose -f docker-compose-auth.yml       -p auth       up -d && echo "✓ Auth services started"
-docker compose -f docker-compose-devops.yml     -p devops     up -d && echo "✓ DevOps services started"
-docker compose -f docker-compose-manager.yml    -p manager    up -d && echo "✓ Manager services started"
-docker compose -f docker-compose-monitor.yml    -p monitor    up -d && echo "✓ Monitor services started"
+# 启动基础设施服务
+echo "Starting base services..."
+for group in "${COMPOSE_FILES_BASE[@]}"; do
+  docker compose -f "docker-compose-${group}.yml" up -d && echo "✓ ${group} services started"
+done
 
-# 等待 MySQL 就绪（Nacos / xxl-job-admin 依赖 MySQL 完成初始化）
-echo "Waiting for MySQL to be ready..."
+# 等待 MySQL 健康检查通过（Nacos / xxl-job-admin 依赖 MySQL 完成初始化）
+echo "Waiting for MySQL to be healthy..."
 MYSQL_WAIT_TIMEOUT=120
 MYSQL_WAIT_COUNT=0
-until docker exec mysql mysqladmin ping -uroot -p"$MYSQL_ROOT_PASSWORD" --silent 2>/dev/null; do
+until [ "$(docker inspect -f '{{.State.Health.Status}}' mysql 2>/dev/null)" = "healthy" ]; do
   MYSQL_WAIT_COUNT=$((MYSQL_WAIT_COUNT + 1))
-  if [ $MYSQL_WAIT_COUNT -ge $MYSQL_WAIT_TIMEOUT ]; then
-    echo "Error: MySQL did not become ready within ${MYSQL_WAIT_TIMEOUT} seconds. Aborting."
+  if [ "$MYSQL_WAIT_COUNT" -ge "$MYSQL_WAIT_TIMEOUT" ]; then
+    echo "Error: MySQL did not become healthy within ${MYSQL_WAIT_TIMEOUT} seconds. Aborting."
     exit 1
   fi
   echo "  MySQL not ready yet (${MYSQL_WAIT_COUNT}s)..."
   sleep 1
 done
-echo "✓ MySQL is ready"
+echo "✓ MySQL is healthy"
 
-docker compose -f docker-compose-microservices.yml -p microservices up -d && echo "✓ Microservices started"
-docker compose -f docker-compose-ai.yml            -p ai            up -d && echo "✓ AI services started"
-docker compose -f docker-compose-tv.yml            -p tv            up -d && echo "✓ TV services started"
+# 启动依赖 MySQL 的服务
+echo "Starting deferred services..."
+for group in "${COMPOSE_FILES_DEFERRED[@]}"; do
+  docker compose -f "docker-compose-${group}.yml" up -d && echo "✓ ${group} services started"
+done
 
 echo "==========================================="
 echo "所有服务已启动！"
