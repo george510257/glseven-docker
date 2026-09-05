@@ -1,3 +1,5 @@
+name: microservices
+
 networks:
   glseven:
     external: true
@@ -15,11 +17,8 @@ services:
       - common/env/common.env
       - common/env/nacos.env
     volumes:
-      - ${DOCKER_VOLUME}/nacos/logs:/home/nacos/logs
+      - ${DOCKER_VOLUME:-/docker/glseven}/nacos/logs:/home/nacos/logs
       - ./nacos/config/custom.properties:/home/nacos/init.d/custom.properties
-    depends_on:
-      mysql:
-        condition: service_healthy
     networks:
       glseven:
         ipv4_address: 172.18.7.1
@@ -42,11 +41,8 @@ services:
     env_file:
       - common/env/common.env
     volumes:
-      - ${DOCKER_VOLUME}/xxl-job-admin/logs:/data/applogs
+      - ${DOCKER_VOLUME:-/docker/glseven}/xxl-job-admin/logs:/data/applogs
       - ./xxl-job-admin/application.properties:/application.properties
-    depends_on:
-      mysql:
-        condition: service_healthy
     networks:
       glseven:
         ipv4_address: 172.18.7.2
