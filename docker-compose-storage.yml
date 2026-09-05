@@ -1,3 +1,5 @@
+name: storage
+
 networks:
   glseven:
     external: true
@@ -15,8 +17,8 @@ services:
       - common/env/common.env
       - common/env/mysql.env
     volumes:
-      - ${DOCKER_VOLUME}/mysql/data:/var/lib/mysql
-      - ${DOCKER_VOLUME}/mysql/conf.d:/etc/mysql/conf.d
+      - ${DOCKER_VOLUME:-/docker/glseven}/mysql/data:/var/lib/mysql
+      - ${DOCKER_VOLUME:-/docker/glseven}/mysql/conf.d:/etc/mysql/conf.d
       - ./mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
     networks:
       glseven:
@@ -25,7 +27,8 @@ services:
       - "3306:3306"
       # Port 33060 (MySQL X Protocol) is not used by any service; removed to reduce attack surface.
     healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-uroot", "-p${MYSQL_ROOT_PASSWORD}", "--silent" ]
+      # $$ 让容器内 shell 展开 env_file 注入的 MYSQL_ROOT_PASSWORD，不依赖 compose 插值。
+      test: [ "CMD-SHELL", "mysqladmin ping -h127.0.0.1 -p$$MYSQL_ROOT_PASSWORD --silent" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -37,19 +40,19 @@ services:
     hostname: redis
     restart: always
     # --requirepass enables password authentication.
-    # Update REDIS_PASSWORD here and in common/env/moontv.env if you change it.
-    command: redis-server --appendonly yes --requirepass glseven_redis_2024
+    # REDIS_PASSWORD comes from .env (see .env.example); the fallback keeps no-.env usage working.
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-glseven_redis_2024}
     env_file:
       - common/env/common.env
     volumes:
-      - ${DOCKER_VOLUME}/redis/data:/data
+      - ${DOCKER_VOLUME:-/docker/glseven}/redis/data:/data
     networks:
       glseven:
         ipv4_address: 172.18.1.2
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "glseven_redis_2024", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a '${REDIS_PASSWORD:-glseven_redis_2024}' ping"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -64,8 +67,8 @@ services:
       - common/env/common.env
       - common/env/mongo.env
     volumes:
-      - ${DOCKER_VOLUME}/mongo/data/db:/data/db
-      - ${DOCKER_VOLUME}/mongo/data/configdb:/data/configdb
+      - ${DOCKER_VOLUME:-/docker/glseven}/mongo/data/db:/data/db
+      - ${DOCKER_VOLUME:-/docker/glseven}/mongo/data/configdb:/data/configdb
     networks:
       glseven:
         ipv4_address: 172.18.1.3
@@ -100,6 +103,8 @@ services:
     container_name: adminer
     hostname: adminer
     restart: always
+    env_file:
+      - common/env/common.env
     depends_on:
       mysql:
         condition: service_healthy
