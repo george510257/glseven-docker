@@ -9,7 +9,7 @@ services:
   # Microservices 172.18.7.x ===========================================================================================
 
   nacos:
-    image: nacos/nacos-server:v3.1.1
+    image: nacos/nacos-server:v3.2.4
     container_name: nacos
     hostname: nacos
     restart: always
@@ -34,7 +34,7 @@ services:
       start_period: 30s
 
   xxl-job-admin:
-    image: xuxueli/xxl-job-admin:3.3.2
+    image: xuxueli/xxl-job-admin:3.4.2
     container_name: xxl-job-admin
     hostname: xxl-job-admin
     restart: always
