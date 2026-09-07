@@ -25,16 +25,5 @@ services:
     ports:
       - "3001:3000"
 
-  libretv:
-    image: bestzwei/libretv:202508060117
-    container_name: libretv
-    hostname: libretv
-    restart: always
-    env_file:
-      - common/env/common.env
-      - common/env/libretv.env
-    networks:
-      glseven:
-        ipv4_address: 172.18.8.2
-    ports:
-      - "8899:8080"
+  # libretv (bestzwei) 上游已于 2025-08 停更，与 LunaTV 功能重叠，已下线。
+  # 预留：IP 172.18.8.2、端口 8899。
