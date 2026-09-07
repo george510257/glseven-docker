@@ -2,7 +2,7 @@
 # Compose 文件清单（唯一数据源）：
 # - BASE：基础设施服务，第一批启动。
 # - DEFERRED：依赖 MySQL 就绪后再启动（nacos/xxl-job-admin 需要 MySQL 完成初始化）。
-# - PORTAL：nginx 导航门户，最后启动（代理目标先就绪）。
+# - PORTAL：nginx 导航门户，最后启动（导航的目标服务先就绪）。
 # 关闭时按启动顺序（BASE + DEFERRED + PORTAL）的逆序执行。
 
 COMPOSE_FILES_BASE=(storage messaging auth devops manager monitor)
