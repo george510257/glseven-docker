@@ -9,7 +9,7 @@ services:
   # Monitor 172.18.4.x =================================================================================================
 
   prometheus:
-    image: prom/prometheus:v3.10.0
+    image: prom/prometheus:v3.14.0
     container_name: prometheus
     hostname: prometheus
     restart: always
@@ -31,7 +31,7 @@ services:
       start_period: 30s
 
   grafana:
-    image: grafana/grafana:12.4.0
+    image: grafana/grafana:13.2.1
     container_name: grafana
     hostname: grafana
     restart: always
@@ -52,7 +52,7 @@ services:
       - "3000:3000"
 
   elk:
-    image: sebp/elk:9.3.1
+    image: sebp/elk:9.5.2
     container_name: elk
     hostname: elk
     restart: always

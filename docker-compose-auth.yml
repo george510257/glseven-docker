@@ -9,6 +9,7 @@ services:
   # Auth 172.18.3.x ====================================================================================================
 
   openldap:
+    # openldap v1 已官方弃用，v2 仅有 alpha 版；等 v2 稳定版发布后再做一次性迁移。
     image: osixia/openldap:1.5.0
     container_name: openldap
     hostname: openldap

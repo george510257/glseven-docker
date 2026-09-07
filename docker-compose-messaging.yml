@@ -9,7 +9,7 @@ services:
   # Messaging 172.18.2.x ==============================================================================================
 
   rabbitmq:
-    image: rabbitmq:4.2.4-management
+    image: rabbitmq:4.3.5-management
     container_name: rabbitmq
     hostname: rabbitmq
     restart: always
@@ -29,7 +29,7 @@ services:
       - "15675:15675"  # MQTT over WebSocket
 
   kafka:
-    image: apache/kafka:4.2.0
+    image: apache/kafka:4.3.1
     container_name: kafka
     hostname: kafka
     restart: always

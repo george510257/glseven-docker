@@ -9,7 +9,7 @@ services:
   # Storage 172.18.1.x ================================================================================================
 
   mysql:
-    image: mysql:8.4.8
+    image: mysql:9.7.2
     container_name: mysql
     hostname: mysql
     restart: always
@@ -35,7 +35,7 @@ services:
       start_period: 30s
 
   redis:
-    image: redis:8.6.1
+    image: redis:8.10.1
     container_name: redis
     hostname: redis
     restart: always
@@ -59,7 +59,7 @@ services:
       start_period: 30s
 
   mongo:
-    image: mongo:8.0.19
+    image: mongo:8.0.29
     container_name: mongo
     hostname: mongo
     restart: always
@@ -82,6 +82,7 @@ services:
       start_period: 30s
 
   mongo-express:
+    # mongo-express 已是最新稳定版（1.1.0 仍为 RC）；官方镜像已标注 DEPRECATED，维持不动。
     image: mongo-express:1.0.2
     container_name: mongo-express
     hostname: mongo-express
@@ -99,7 +100,7 @@ services:
       - "18081:8081"
 
   adminer:
-    image: adminer:5.4.2
+    image: adminer:6.0.1
     container_name: adminer
     hostname: adminer
     restart: always

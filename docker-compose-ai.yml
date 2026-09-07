@@ -9,7 +9,7 @@ services:
   # AI 172.18.9.x ======================================================================================================
 
   ollama:
-    image: ollama/ollama:0.17.7
+    image: ollama/ollama:0.33.3
     container_name: ollama
     hostname: ollama
     restart: always
@@ -42,7 +42,7 @@ services:
               count: all
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:0.8.9
+    image: ghcr.io/open-webui/open-webui:v0.11.3
     container_name: open-webui
     hostname: open-webui
     restart: always

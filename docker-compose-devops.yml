@@ -9,7 +9,7 @@ services:
   # DevOps 172.18.6.x ==================================================================================================
 
   nexus3:
-    image: sonatype/nexus3:3.90.1
+    image: sonatype/nexus3:3.96.0
     container_name: nexus3
     hostname: nexus3
     restart: always
