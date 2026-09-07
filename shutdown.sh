@@ -11,7 +11,7 @@ echo "==========================================="
 echo "停止 GLSeven Docker 容器..."
 echo "==========================================="
 
-# 按启动顺序（BASE + DEFERRED 拼接）的逆序停止所有服务
+# 按启动顺序（BASE + DEFERRED + PORTAL 拼接）的逆序停止所有服务
 stop_all() {
   local -a groups=("$@")
   local i group
@@ -22,7 +22,7 @@ stop_all() {
 }
 
 echo "Stopping services..."
-stop_all "${COMPOSE_FILES_BASE[@]}" "${COMPOSE_FILES_DEFERRED[@]}"
+stop_all "${COMPOSE_FILES_BASE[@]}" "${COMPOSE_FILES_DEFERRED[@]}" "${COMPOSE_FILES_PORTAL[@]}"
 
 # 移除网络（幂等，不存在则跳过）
 if docker network inspect glseven &>/dev/null; then

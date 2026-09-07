@@ -59,6 +59,13 @@ for group in "${COMPOSE_FILES_DEFERRED[@]}"; do
   echo "✓ ${group} services started"
 done
 
+# 启动导航门户（最后一批）
+echo "Starting portal..."
+for group in "${COMPOSE_FILES_PORTAL[@]}"; do
+  docker compose -f "docker-compose-${group}.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
+  echo "✓ ${group} services started"
+done
+
 echo "==========================================="
 echo "所有服务已启动！"
 echo "==========================================="
