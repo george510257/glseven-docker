@@ -28,7 +28,7 @@ services:
       - "636:636"
 
   php-ldap-admin:
-    image: osixia/phpldapadmin:0.9.0
+    image: phpldapadmin/phpldapadmin:2.3.11
     container_name: php-ldap-admin
     hostname: php-ldap-admin
     restart: always
@@ -36,7 +36,8 @@ services:
       - common/env/common.env
       - common/env/phpldapadmin.env
     volumes:
-      - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/data:/var/www/phpldapadmin
+      - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/sessions:/app/storage/framework/sessions
+      - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/logs:/app/storage/logs
     depends_on:
       openldap:
         condition: service_started
@@ -44,5 +45,4 @@ services:
       glseven:
         ipv4_address: 172.18.3.2
     ports:
-      - "6080:80"
-      - "6443:443"
+      - "6080:8080"
