@@ -27,6 +27,8 @@ services:
       - "8848:8848"
       - "9848:9848"
     healthcheck:
+      # v3 控制台/就绪端点在 8080（容器内直连，宿主映射 48081）；8848 的 actuator health 在 v3 已不暴露。
+      # 依赖 nacos 3.0.3+ 行为：模块 not ready 返回 500（nacos#13437/#13644），降级镜像后勿沿用此探针。
       test: ["CMD", "curl", "-f", "http://localhost:8080/v3/console/health/readiness"]
       interval: 10s
       timeout: 5s
