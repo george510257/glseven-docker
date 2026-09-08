@@ -1,0 +1,86 @@
+name: security
+
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Security 172.18.3.x ================================================================================================
+
+  openldap:
+    # openldap v1 已官方弃用，v2 仅有 alpha 版；等 v2 稳定版发布后再做一次性迁移。
+    image: osixia/openldap:1.5.0
+    container_name: openldap
+    hostname: openldap
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/openldap.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/openldap/data:/var/lib/ldap
+      - ${DOCKER_VOLUME:-/docker/glseven}/openldap/config:/etc/ldap/slapd.d
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.1
+    ports:
+      - "389:389"
+      - "636:636"
+    healthcheck:
+      test: [ "CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1:389 -b '' -s base -o ldif-wrap=no > /dev/null 2>&1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  php-ldap-admin:
+    image: phpldapadmin/phpldapadmin:2.3.11
+    container_name: php-ldap-admin
+    hostname: php-ldap-admin
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/phpldapadmin.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/sessions:/app/storage/framework/sessions
+      - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/logs:/app/storage/logs
+    depends_on:
+      openldap:
+        condition: service_healthy
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.2
+    ports:
+      - "6080:8080"
+    healthcheck:
+      # 根路径返回登录页 200（登录走 LDAP bind，页面本身无 auth 墙）；镜像内有 curl（Task 1 实测）。
+      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://127.0.0.1:8080/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  keycloak:
+    # start-dev 为官方开发模式（免 TLS/hostname 配置）；数据全部在 MySQL，容器无状态不挂数据卷。
+    # mysql 在 infra 域：跨 compose project 不写 depends_on，由 DEFERRED 批次（MySQL 已健康）时序保证。
+    image: keycloak/keycloak:26.7.3
+    container_name: keycloak
+    hostname: keycloak
+    restart: always
+    command: start-dev
+    env_file:
+      - common/env/common.env
+      - common/env/keycloak.env
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.3
+    ports:
+      - "48082:8080"   # Admin Console / 认证端点
+    healthcheck:
+      # 镜像内无 curl/wget（Task 1 实测），改用 bash /dev/tcp 对 9000 管理端口做 TCP 存活探测。
+      # 9000 管理端口由 KC_HEALTH_AND_METRICS_ENABLED=true 开启；start_period 60s 覆盖首启 Flyway 迁移。
+      test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9000' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
