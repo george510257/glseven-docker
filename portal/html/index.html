@@ -32,52 +32,38 @@
   <h1>GlSeven 导航</h1>
   <div class="sub">开发环境各服务入口（链接自动指向当前宿主机）</div>
 
-  <div class="group-title">存储</div>
+  <div class="group-title">基础设施</div>
   <div class="grid">
     <a class="card" data-port="18080" href="#"><div class="name">Adminer</div><div class="desc">MySQL / MongoDB 数据库管理</div><div class="port">:18080</div></a>
     <a class="card" data-port="18081" href="#"><div class="name">mongo-express</div><div class="desc">MongoDB Web 管理</div><div class="port">:18081</div></a>
-  </div>
-
-  <div class="group-title">消息</div>
-  <div class="grid">
     <a class="card" data-port="15672" href="#"><div class="name">RabbitMQ 管理</div><div class="desc">队列 / 交换机 / 连接管理台</div><div class="port">:15672</div></a>
   </div>
 
-  <div class="group-title">认证</div>
+  <div class="group-title">认证与身份</div>
   <div class="grid">
     <a class="card" data-port="6080" href="#"><div class="name">phpLDAPadmin</div><div class="desc">OpenLDAP 目录管理</div><div class="port">:6080</div></a>
+    <a class="card" data-port="48082" href="#"><div class="name">Keycloak</div><div class="desc">统一身份认证 SSO（Admin Console）</div><div class="port">:48082</div></a>
   </div>
 
-  <div class="group-title">监控</div>
+  <div class="group-title">平台服务</div>
+  <div class="grid">
+    <a class="card" data-port="48081" href="#"><div class="name">Nacos</div><div class="desc">注册与配置中心</div><div class="port">:48081</div></a>
+    <a class="card" data-port="48080" data-path="/xxl-job-admin/" href="#"><div class="name">XXL-JOB</div><div class="desc">分布式任务调度</div><div class="port">:48080/xxl-job-admin/</div></a>
+    <a class="card" data-port="8081" href="#"><div class="name">Nexus</div><div class="desc">Maven / npm 制品仓库</div><div class="port">:8081</div></a>
+    <a class="card" data-port="9000" href="#"><div class="name">Portainer</div><div class="desc">Docker 容器管理</div><div class="port">:9000</div></a>
+    <a class="card" data-port="9080" href="#"><div class="name">APISIX</div><div class="desc">API 网关数据面入口（Admin API :9180）</div><div class="port">:9080</div></a>
+  </div>
+
+  <div class="group-title">可观测性</div>
   <div class="grid">
     <a class="card" data-port="9090" href="#"><div class="name">Prometheus</div><div class="desc">指标采集与查询</div><div class="port">:9090</div></a>
     <a class="card" data-port="3000" href="#"><div class="name">Grafana</div><div class="desc">监控可视化面板</div><div class="port">:3000</div></a>
     <a class="card" data-port="5601" href="#"><div class="name">Kibana</div><div class="desc">ELK 日志检索</div><div class="port">:5601</div></a>
   </div>
 
-  <div class="group-title">管理</div>
-  <div class="grid">
-    <a class="card" data-port="9000" href="#"><div class="name">Portainer</div><div class="desc">Docker 容器管理</div><div class="port">:9000</div></a>
-  </div>
-
-  <div class="group-title">DevOps</div>
-  <div class="grid">
-    <a class="card" data-port="8081" href="#"><div class="name">Nexus</div><div class="desc">Maven / npm 制品仓库</div><div class="port">:8081</div></a>
-  </div>
-
-  <div class="group-title">微服务</div>
-  <div class="grid">
-    <a class="card" data-port="48081" href="#"><div class="name">Nacos</div><div class="desc">注册与配置中心</div><div class="port">:48081</div></a>
-    <a class="card" data-port="48080" data-path="/xxl-job-admin/" href="#"><div class="name">XXL-JOB</div><div class="desc">分布式任务调度</div><div class="port">:48080/xxl-job-admin/</div></a>
-  </div>
-
-  <div class="group-title">AI</div>
+  <div class="group-title">应用</div>
   <div class="grid">
     <a class="card" data-port="8080" href="#"><div class="name">Open WebUI</div><div class="desc">Ollama 模型对话前端</div><div class="port">:8080</div></a>
-  </div>
-
-  <div class="group-title">TV</div>
-  <div class="grid">
     <a class="card" data-port="3001" href="#"><div class="name">MoonTV (LunaTV)</div><div class="desc">影视聚合</div><div class="port">:3001</div></a>
   </div>
 
