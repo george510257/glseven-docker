@@ -5,9 +5,17 @@ deployment:
       # 修改后需同步依赖 Admin API 的脚本/文档。
       - name: admin
         key: "7705a28bc106c39a9e959427f9351c51"
-etcd:
-  host:
-    - "http://etcd:2379"
+        role: admin
+    # 默认 allow_admin 仅 127.0.0.0/24（nginx 层 deny all），宿主/跨容器访问一律 403；
+    # 放开网段后由 X-API-KEY 鉴权守卫（无/错 key 401）。Docker Desktop 下宿主来源 IP 不在
+    # docker 网段，无法收紧为 172.18.0.0/16（实测 403）。
+    allow_admin:
+      - 0.0.0.0/0
+  # 3.x 规范：etcd 配置必须置于 deployment 下。顶层 etcd 在 3.18 校验失败（required prefix），
+  # 且补 prefix 后会被 CLI 默认值整体替换为 127.0.0.1:2379（实测）。
+  etcd:
+    host:
+      - "http://etcd:2379"
 plugin_attr:
   prometheus:
     export_addr:
