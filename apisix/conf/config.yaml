@@ -1,0 +1,16 @@
+deployment:
+  admin:
+    admin_key:
+      # Admin API 密钥：由 openssl rand -hex 16 生成（默认 key 是公开值，不可沿用）。
+      # 修改后需同步依赖 Admin API 的脚本/文档。
+      - name: admin
+        key: "7705a28bc106c39a9e959427f9351c51"
+etcd:
+  host:
+    - "http://etcd:2379"
+plugin_attr:
+  prometheus:
+    export_addr:
+      # 0.0.0.0 供 Prometheus 跨容器抓取（默认仅 127.0.0.1）。
+      ip: "0.0.0.0"
+      port: 9091

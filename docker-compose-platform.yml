@@ -1,0 +1,124 @@
+name: platform
+
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Platform 172.18.4.x ================================================================================================
+
+  nacos:
+    image: nacos/nacos-server:v3.2.4
+    container_name: nacos
+    hostname: nacos
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/nacos.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/nacos/logs:/home/nacos/logs
+      - ./nacos/config/custom.properties:/home/nacos/init.d/custom.properties
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.1
+    ports:
+      - "48081:8080"
+      - "8848:8848"
+      - "9848:9848"
+    healthcheck:
+      # v3 控制台/就绪端点在 8080（容器内直连，宿主映射 48081）；8848 的 actuator health 在 v3 已不暴露。
+      # 依赖 nacos 3.0.3+ 行为：模块 not ready 返回 500（nacos#13437/#13644），降级镜像后勿沿用此探针。
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v3/console/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  xxl-job-admin:
+    image: xuxueli/xxl-job-admin:3.4.2
+    container_name: xxl-job-admin
+    hostname: xxl-job-admin
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/xxl-job-admin/logs:/data/applogs
+      - ./xxl-job-admin/application.properties:/application.properties
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.2
+    ports:
+      - "48080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/xxl-job-admin/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  nexus3:
+    image: sonatype/nexus3:3.96.0
+    container_name: nexus3
+    hostname: nexus3
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/nexus3/data:/nexus-data
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.3
+    ports:
+      - "5000:5000"   # Docker Registry
+      - "8081:8081"   # Nexus Web UI
+    healthcheck:
+      # /service/rest/v1/status 就绪时 200、启动中 503（匿名可访问）。
+      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:8081/service/rest/v1/status || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  portainer:
+    # 不加探针：镜像为极简底座、无 shell/curl/wget（Task 1 实测），无法执行任何探测命令。
+    image: portainer/portainer-ce:2.45.0
+    container_name: portainer
+    hostname: portainer
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/portainer/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.4
+    ports:
+      - "9000:9000"
+
+  apisix:
+    # 独立网关组件：数据面 + Admin API 就绪，路由留空由微服务开发自行配置。
+    # etcd 在 infra 域：跨 compose project 不写 depends_on（已知坑），由批次时序 + 启动重试 + restart 兜底。
+    # 官方 Dashboard 已退役、无内置 UI；9443(TLS) 暂不开放（YAGNI）。
+    image: apache/apisix:3.18.0-debian
+    container_name: apisix
+    hostname: apisix
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ./apisix/conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    networks:
+      glseven:
+        ipv4_address: 172.18.4.5
+    ports:
+      - "9080:9080"   # 网关数据面（无路由时 404 为预期）
+      - "9180:9180"   # Admin API（X-API-KEY 见 apisix/conf/config.yaml）
+    healthcheck:
+      # 镜像内无 curl/wget（Task 1 实测），改用 bash /dev/tcp 对数据面 9080 做 TCP 存活探测。
+      test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9080' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
