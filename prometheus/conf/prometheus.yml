@@ -16,3 +16,26 @@ scrape_configs:
     metrics_path: "/nacos/actuator/prometheus"
     static_configs:
       - targets: [ "nacos:8080" ]
+
+  - job_name: "apisix"
+    # prometheus 插件导出地址（apisix/conf/config.yaml 中 export_addr 0.0.0.0:9091）。
+    metrics_path: "/apisix/prometheus/metrics"
+    static_configs:
+      - targets: [ "apisix:9091" ]
+
+  - job_name: "etcd"
+    static_configs:
+      - targets: [ "etcd:2379" ]
+
+  - job_name: "keycloak"
+    # KC_HEALTH_ENABLED/KC_METRICS_ENABLED=true 开启的 9000 管理端口（未对宿主机映射）。
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: [ "keycloak:9000" ]
+
+  - job_name: "grafana"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: [ "grafana:3000" ]
+
+  # kafka（需 jmx exporter）、elk ES（需插件）、moontv（无原生端点）不接入，避免引入额外组件。
