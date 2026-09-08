@@ -25,7 +25,7 @@ services:
     ports:
       - "11434:11434"
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:11434/api/version" ]
+      test: [ "CMD-SHELL", "ollama ls" ]
       interval: 30s
       timeout: 10s
       retries: 3
