@@ -78,7 +78,7 @@ services:
       - "48082:8080"   # Admin Console / 认证端点
     healthcheck:
       # 镜像内无 curl/wget（Task 1 实测），改用 bash /dev/tcp 对 9000 管理端口做 TCP 存活探测。
-      # 9000 管理端口由 KC_HEALTH_AND_METRICS_ENABLED=true 开启；探针工具按 Task 1 验证结果。
+      # 9000 管理端口由 KC_HEALTH_ENABLED/KC_METRICS_ENABLED 开启；探针工具按 Task 1 验证结果。
       test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9000' || exit 1" ]
       interval: 10s
       timeout: 5s
