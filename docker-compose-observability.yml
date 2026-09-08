@@ -1,0 +1,84 @@
+name: observability
+
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Observability 172.18.2.x ===========================================================================================
+
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    container_name: prometheus
+    hostname: prometheus
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ./prometheus/conf/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ${DOCKER_VOLUME:-/docker/glseven}/prometheus/data:/prometheus
+    networks:
+      glseven:
+        ipv4_address: 172.18.2.1
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  grafana:
+    image: grafana/grafana:13.2.1
+    container_name: grafana
+    hostname: grafana
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ./grafana/conf/provisioning:/etc/grafana/provisioning
+      - ./grafana/conf/dashboards:/var/lib/grafana/dashboards
+      - ./grafana/conf/config/grafana.ini:/etc/grafana/grafana.ini
+      - ${DOCKER_VOLUME:-/docker/glseven}/grafana/data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks:
+      glseven:
+        ipv4_address: 172.18.2.2
+    ports:
+      - "3000:3000"
+    healthcheck:
+      # /api/health 为匿名可访问端点；镜像内有 curl（Task 1 实测）。
+      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:3000/api/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  elk:
+    image: sebp/elk:9.5.2
+    container_name: elk
+    hostname: elk
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ./elk/kibana/config/kibana.yml:/opt/kibana/config/kibana.yml
+      - ${DOCKER_VOLUME:-/docker/glseven}/elk/data:/var/lib/elasticsearch
+    networks:
+      glseven:
+        ipv4_address: 172.18.2.3
+    ports:
+      - "5601:5601"
+      - "9200:9200"
+      - "5044:5044"
+    healthcheck:
+      # ES 根路径匿名可访问（sebp/elk 默认未启用安全），200 即存活；镜像内有 curl（Task 1 实测）。
+      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:9200/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
