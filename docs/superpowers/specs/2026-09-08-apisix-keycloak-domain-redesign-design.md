@@ -201,16 +201,17 @@ export_addr 改 0.0.0.0 供 Prometheus 跨容器抓取（默认仅 127.0.0.1）�
 ```
 # WARNING: 以下默认凭据仅用于开发环境，生产部署前必须全部修改。
 KC_DB=mysql
-KC_DB_URL=jdbc:mysql://mysql:3306/keycloak
+KC_DB_URL=jdbc:mysql://mysql:3306/keycloak?useSSL=false&allowPublicKeyRetrieval=true
 KC_DB_USERNAME=keycloak
 KC_DB_PASSWORD=keycloak
 KC_BOOTSTRAP_ADMIN_USERNAME=admin
 KC_BOOTSTRAP_ADMIN_PASSWORD=glseven_keycloak_2026
-KC_HEALTH_AND_METRICS_ENABLED=true
+KC_HEALTH_ENABLED=true
+KC_METRICS_ENABLED=true
 ```
 
 - KC_BOOTSTRAP_ADMIN_* 仅首次启动生效（用于创建初始管理员）。
-- 9000 管理端口由 KC_HEALTH_AND_METRICS_ENABLED=true 开启（/health + /metrics），不对宿主机映射，仅供 healthcheck 与 Prometheus 容器网络访问。
+- 9000 管理端口由 KC_HEALTH_ENABLED/KC_METRICS_ENABLED=true 开启（/health + /metrics），不对宿主机映射，仅供 healthcheck 与 Prometheus 容器网络访问。实证：`KC_HEALTH_AND_METRICS_ENABLED` 在 26.7.3 被静默忽略（无告警、9000 拒绝连接），拆分后实测 Quarkus 日志出现 `Management interface listening on http://0.0.0.0:9000`、`/health/ready` 返回 UP。
 
 **mysql/docker-entrypoint-initdb.d/init.sql 追加**（flush privileges 之前）：
 
