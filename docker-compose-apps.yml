@@ -75,6 +75,7 @@ services:
     env_file:
       - common/env/common.env
       - common/env/moontv.env
+    # redis 在 infra 域：跨 compose project 不写 depends_on，由 BASE 先于 DEFERRED 启动时序 + restart: always 兜底。
     environment:
       # Overrides REDIS_URL from moontv.env; password sourced from .env (REDIS_PASSWORD).
       REDIS_URL: "redis://:${REDIS_PASSWORD:-glseven_redis_2024}@redis:6379"
