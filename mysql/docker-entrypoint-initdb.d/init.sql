@@ -10,4 +10,10 @@ create database `nacos_devtest` character set 'utf8mb4' collate 'utf8mb4_general
 create user `nacos`@`%` identified with caching_sha2_password by 'nacos';
 grant all privileges on `nacos_devtest`.* to `nacos`@`%`;
 
+-- 创建数据库 keycloak
+create database `keycloak` character set 'utf8mb4' collate 'utf8mb4_unicode_ci';
+-- 创建普通用户 keycloak
+create user `keycloak`@`%` identified with caching_sha2_password by 'keycloak';
+grant all privileges on `keycloak`.* to `keycloak`@`%`;
+
 flush privileges;
