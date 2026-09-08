@@ -144,8 +144,9 @@ COMPOSE_FILES_PORTAL=(portal)
 - **不写 depends_on**：etcd 在 infra 域，跨 compose project 的 depends_on 不生效（已知坑）；由批次时序（BASE 先于 DEFERRED 且隔 MySQL 健康窗口）+ APISIX 启动重试 + `restart: always` 兜底，compose 注释说明。
 - 健康探针不校验 HTTP 状态码（无路由时 9080 返回 404，TCP 连接成功即数据面就绪；etcd 不可达时 APISIX 无法完成初始化，无假阳性）。
 - 9443（TLS）暂不开放，YAGNI。
+- 实证（3.18.0-debian）：① 顶层 `etcd:` 校验失败（required prefix），补 prefix 后亦会被 CLI 以 `deployment.etcd` 默认值整体替换，故 etcd 必须写 `deployment.etcd.host`；② 默认 `allow_admin=127.0.0.0/24` 在 nginx 层 deny all，宿主/跨容器带正确 key 仍 403，放开为 0.0.0.0/0 后无/错 key 401、正确 key 200（key 即守卫）；③ etcd 不可达时 APISIX init 退出（startup_retry 默认 2 次），靠 restart: always 重生，属"退出-重生"模式。
 
-**./apisix/conf/config.yaml（新增，最小覆盖式）**：APISIX 加载 conf/config-default.yaml（全部默认值：node_listen 9080、admin_listen 0.0.0.0:9180、prometheus 插件已启用）后合并 config.yaml 覆盖项，因此仅 4 处覆盖：
+**./apisix/conf/config.yaml（新增，最小覆盖式）**：3.18 镜像已无 conf/config-default.yaml，默认值内嵌于镜像 CLI（apisix/cli/config.lua；node_listen 9080、admin_listen 0.0.0.0:9180、prometheus 插件默认已启用），config.yaml 与之合并后生效，因此仅 4 处覆盖（admin_key、allow_admin、etcd、export_addr）：
 
 ```yaml
 deployment:
@@ -154,9 +155,17 @@ deployment:
       # 实施时生成：openssl rand -hex 16；修改后需同步依赖 Admin API 的脚本/文档。
       - name: admin
         key: "<IMPLEMENTATION_GENERATED>"
-etcd:
-  host:
-    - "http://etcd:2379"
+        role: admin
+    # 默认 allow_admin 仅 127.0.0.0/24（nginx 层 deny all），宿主/跨容器访问一律 403；
+    # 放开网段后由 X-API-KEY 鉴权守卫（无/错 key 401）。Docker Desktop 下宿主来源 IP 不在
+    # docker 网段，无法收紧为 172.18.0.0/16（实测 403）。
+    allow_admin:
+      - 0.0.0.0/0
+  # 3.x 规范：etcd 配置必须置于 deployment 下。顶层 etcd 在 3.18 校验失败（required prefix），
+  # 且补 prefix 后会被 CLI 默认值整体替换为 127.0.0.1:2379（实测）。
+  etcd:
+    host:
+      - "http://etcd:2379"
 plugin_attr:
   prometheus:
     export_addr:
