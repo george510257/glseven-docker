@@ -32,7 +32,7 @@ bash shutdown.sh
 1. **RabbitMQ**：升级前在旧容器执行一次 `docker exec rabbitmq rabbitmqctl enable_feature_flag all`（4.3 硬性前置）。
 2. **存量数据库手动 SQL**（init 脚本只对全新初始化生效）：
    - nacos（库 nacos_devtest）：执行 `mysql/docker-entrypoint-initdb.d/nacos-mysql.sql` 末尾 3 张新表 DDL（pipeline_execution / ai_resource / ai_resource_version）；不执行则 v3.2 新功能不可用，核心功能不受影响。
-   - xxl-job（库 xxl_job）5 条 ALTER：
+   - xxl-job（库 xxl_job）5 条 ALTER + 1 条可选索引清理：
 
      ```sql
      create index I_jobgroup on xxl_job_log (job_group);
@@ -40,6 +40,7 @@ bash shutdown.sh
      alter table xxl_job_registry modify id bigint(20) NOT NULL AUTO_INCREMENT;
      alter table xxl_job_info modify executor_param text null comment '任务参数';
      alter table xxl_job_log modify executor_param text null comment '任务参数';
+     drop index i_jobid_jobgroup on xxl_job_log; -- 可选：3.4.2 已改用单列 I_jobgroup，旧复合索引可清理
      ```
 
 3. **Kafka**（可选）：稳定后执行 `docker exec kafka /opt/kafka/bin/kafka-features.sh --bootstrap-server localhost:9092 upgrade --release-version 4.3` 固化元数据版本；不固化保持兼容模式（可回滚），固化后不可降级。
