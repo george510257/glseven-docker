@@ -37,7 +37,7 @@ for group in "${COMPOSE_FILES_BASE[@]}"; do
   echo "✓ ${group} services started"
 done
 
-# 等待 MySQL 健康检查通过（Nacos / xxl-job-admin 依赖 MySQL 完成初始化）
+# 等待 MySQL 健康检查通过（keycloak / nacos / xxl-job-admin 依赖 MySQL 完成初始化）
 echo "Waiting for MySQL to be healthy..."
 MYSQL_WAIT_TIMEOUT=120
 MYSQL_WAIT_COUNT=0
