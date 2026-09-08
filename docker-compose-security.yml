@@ -53,7 +53,7 @@ services:
     ports:
       - "6080:8080"
     healthcheck:
-      # 根路径返回登录页 200（登录走 LDAP bind，页面本身无 auth 墙）；镜像内有 curl（Task 1 实测）。
+      # 探针工具按 Task 1 验证结果（默认 curl；仅 wget 可用则等价替换）。
       test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://127.0.0.1:8080/ || exit 1" ]
       interval: 10s
       timeout: 5s
@@ -78,9 +78,9 @@ services:
       - "48082:8080"   # Admin Console / 认证端点
     healthcheck:
       # 镜像内无 curl/wget（Task 1 实测），改用 bash /dev/tcp 对 9000 管理端口做 TCP 存活探测。
-      # 9000 管理端口由 KC_HEALTH_AND_METRICS_ENABLED=true 开启；start_period 60s 覆盖首启 Flyway 迁移。
+      # 9000 管理端口由 KC_HEALTH_AND_METRICS_ENABLED=true 开启；探针工具按 Task 1 验证结果。
       test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9000' || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 60s
+      start_period: 60s   # 首启含 Flyway 迁移，较默认延长
