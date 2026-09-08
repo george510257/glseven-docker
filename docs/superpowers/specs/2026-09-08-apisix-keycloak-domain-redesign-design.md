@@ -102,7 +102,8 @@ COMPOSE_FILES_PORTAL=(portal)
       glseven:
         ipv4_address: 172.18.1.8
     healthcheck:
-      test: [ "CMD-SHELL", "etcdctl endpoint health --endpoints=http://127.0.0.1:2379" ]
+      # 镜像内无 shell（实测），必须用 exec 形式而非 CMD-SHELL。
+      test: [ "CMD", "etcdctl", "endpoint", "health", "--endpoints=http://127.0.0.1:2379" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -111,6 +112,7 @@ COMPOSE_FILES_PORTAL=(portal)
 
 - 宿主机**不映射端口**（仅容器网络内供 APISIX 与 Prometheus 访问）。
 - 无必需环境变量，**不建 env 文件**（仅挂 common.env 时区），决策记录于此。
+- 镜像为 distroless、无 shell；默认无认证，安全边界=glseven 容器网络，勿新增宿主端口映射（Task 1 实测确认）。
 
 ### 3.3 APISIX（platform 域 172.18.4.5）
 
@@ -131,7 +133,8 @@ COMPOSE_FILES_PORTAL=(portal)
       - "9080:9080"   # 网关数据面（路由留空，由开发自行配置）
       - "9180:9180"   # Admin API
     healthcheck:
-      test: [ "CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:9080/ || exit 1" ]
+      # 镜像内无 curl/wget（Task 1 实测），改用 bash /dev/tcp 对数据面 9080 做 TCP 存活探测。
+      test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9080' || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -139,7 +142,7 @@ COMPOSE_FILES_PORTAL=(portal)
 ```
 
 - **不写 depends_on**：etcd 在 infra 域，跨 compose project 的 depends_on 不生效（已知坑）；由批次时序（BASE 先于 DEFERRED 且隔 MySQL 健康窗口）+ APISIX 启动重试 + `restart: always` 兜底，compose 注释说明。
-- 健康探针不校验 HTTP 状态码（无路由时 9080 返回 404，curl 连接成功即数据面就绪；etcd 不可达时 APISIX 无法完成初始化，无假阳性）。
+- 健康探针不校验 HTTP 状态码（无路由时 9080 返回 404，TCP 连接成功即数据面就绪；etcd 不可达时 APISIX 无法完成初始化，无假阳性）。
 - 9443（TLS）暂不开放，YAGNI。
 
 **./apisix/conf/config.yaml（新增，最小覆盖式）**：APISIX 加载 conf/config-default.yaml（全部默认值：node_listen 9080、admin_listen 0.0.0.0:9180、prometheus 插件已启用）后合并 config.yaml 覆盖项，因此仅 4 处覆盖：
@@ -181,7 +184,8 @@ export_addr 改 0.0.0.0 供 Prometheus 跨容器抓取（默认仅 127.0.0.1）�
     ports:
       - "48082:8080"   # Admin Console / 认证端点
     healthcheck:
-      test: [ "CMD-SHELL", "curl -f http://localhost:9000/health/live" ]
+      # 镜像内无 curl/wget（Task 1 实测），改用 bash /dev/tcp 对 9000 管理端口做 TCP 存活探测。
+      test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9000' || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -236,13 +240,13 @@ grant all privileges on `keycloak`.* to `keycloak`@`%`;
 | open-webui | `curl -f http://localhost:8080/health` |
 | elk | `curl -f http://localhost:9200/` |
 | grafana | `curl -f http://localhost:3000/api/health` |
-| mongo-express | HTTP :8081 探测（实施时验证 busybox wget 可用性） |
-| adminer | HTTP :8080 探测（实施时验证 curl CLI 可用性） |
-| php-ldap-admin | HTTP :8080 探测（实施时验证工具可用性） |
-| portainer | HTTP :9000 探测（实施时验证 busybox wget 可用性） |
-| moontv | HTTP :3000 探测（实施时验证工具可用性） |
+| mongo-express | wget 携带 basic-auth 凭据探测 :8081（$$ 展开容器内 env，凭据改 env 自动跟随） |
+| adminer | `curl -f http://127.0.0.1:8080/` |
+| php-ldap-admin | `curl -f http://127.0.0.1:8080/` |
+| portainer | **不添加探针**——镜像为极简底座、无 shell/curl/wget（实测），compose 注释记录原因 |
+| moontv | `wget -q -O /dev/null http://127.0.0.1:3000/` |
 
-- **失败预案**：实施时逐一验证镜像内探针工具存在性；不满足则用镜像内可用工具等价替换（如 wget 代替 curl），仍不可行则不添加该探针并在 compose 注释记录原因。
+- **探针工具实测结论（Task 1）**：adminer/phpldapadmin/nexus3/open-webui/elk/grafana 有 curl；mongo-express/moontv 仅 wget；portainer 无 shell 无 HTTP 工具（不添加探针）；etcd 无 shell（exec 形式）；apisix/keycloak 无 curl/wget 但有 bash（/dev/tcp TCP 探测）。
 - 已有 healthcheck 的（mysql/redis/mongo/prometheus/nacos/xxl-job/ollama）不动。
 - 联动：openldap 获得探针后，php-ldap-admin 的 `depends_on` 从 `service_started` 升级为 `service_healthy`（同文件内，有效）。
 
@@ -293,7 +297,7 @@ grant all privileges on `keycloak`.* to `keycloak`@`%`;
 2. **临时环境全量拉起**：`DOCKER_VOLUME=/tmp/glseven-verify COMPOSE_PROJECT_NAME=glseven-verify bash startup.sh`——bind mount 走临时目录、named volume 独立前缀、固定 IP 复用（存量停机状态）。
 3. **逐组验证**：
    - BASE：infra 8 服务 + observability 3 服务状态/healthcheck 全绿，关键日志无致命错误。
-   - 等 MySQL → DEFERRED：security（openldap 健康、phpldapadmin 就绪、**Keycloak 控制台用 bootstrap admin 登录成功**）、platform（nacos/xxl-job/nexus3/portainer 健康、**APISIX Admin API 冒烟**：带 X-API-KEY 请求 `/apisix/admin/routes` 返回 200 JSON）、apps（ollama/open-webui/moontv 抽查）。
+   - 等 MySQL → DEFERRED：security（openldap 健康、phpldapadmin 就绪、**Keycloak 控制台用 bootstrap admin 登录成功**）、platform（nacos/xxl-job/nexus3 健康、portainer 状态 Up（无探针）、**APISIX Admin API 冒烟**：带 X-API-KEY 请求 `/apisix/admin/routes` 返回 200 JSON）、apps（ollama/open-webui/moontv 抽查）。
    - PORTAL：导航页渲染 15 张卡片，Keycloak/APISIX 卡片链接指向正确端口。
 4. **可观测性验证**：Prometheus targets 全 UP（含 apisix/etcd/keycloak/grafana 四个新 job）。
 5. **初始化链路验证**：keycloak 库/用户由 init.sql 自动创建；Keycloak 首启 Flyway 迁移无报错。
