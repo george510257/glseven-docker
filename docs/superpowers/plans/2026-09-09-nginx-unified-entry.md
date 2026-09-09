@@ -6,7 +6,7 @@
 
 **Architecture:** http 块监听端口 = 容器原生端口，按 server_name（Host 头）分流（18 个 server 块分布于 11 个监听端口；8080/3000/8081 为多实例共享端口）；stream 块按原生端口号透明转发（15 条，客户端连接串零改动；多端点实例同域名不同端口）。配置按容器拆分：http 侧 `conf.d/<容器名>.conf`（16 文件，含门户 portal.conf），stream 侧 `stream-conf.d/<容器名>.conf`（11 文件）。上游服务名为静态解析，依赖 portal 最后一批启动（compose-list.sh 不变）。
 
-**Tech Stack:** Docker Compose v2、nginx:1.30.4 官方镜像（内置 ngx_stream_module.so 动态模块）、macOS /etc/hosts。
+**Tech Stack:** Docker Compose v2、nginx:1.30.4 官方镜像（stream 静态编译内置，无需 load_module）、macOS /etc/hosts。
 
 **规格依据:** `docs/superpowers/specs/2026-09-09-nginx-unified-entry-design.md`（已确认）
 
@@ -18,7 +18,7 @@
 
 | 文件 | 操作 | 职责 |
 |---|---|---|
-| `portal/conf/nginx.conf` | 新增 | 主配置：load_module + http 块（含 WebSocket map）include conf.d；stream 块 include stream-conf.d |
+| `portal/conf/nginx.conf` | 新增 | 主配置：http 块（含 WebSocket map）include conf.d；stream 块 include stream-conf.d |
 | `portal/conf/snippets/proxy.conf` | 新增 | 反代通用参数片段，conf.d 各 vhost include |
 | `portal/conf/stream-conf.d/<容器名>.conf` | 新增 ×11 | stream TCP 透传，每容器一文件（rabbitmq 3 条、openldap/nacos/elk 各 2 条同文件） |
 | `portal/conf/conf.d/<容器名>.conf` | 新增 ×16 | http 虚拟主机，每容器一文件（elk/apisix 多端点同文件；portal.conf 为根域门户） |
@@ -41,13 +41,13 @@
 
 **Files:** 无（只读验证）
 
-- [ ] **Step 1: 确认官方镜像内置 stream 动态模块**
+- [ ] **Step 1: 确认官方镜像 stream 编译方式（决定是否需要 load_module）**
 
 Run:
 ```shell
-docker run --rm nginx:1.30.4 sh -c 'ls /usr/lib/nginx/modules | grep stream'
+docker run --rm nginx:1.30.4 sh -c 'ls /usr/lib/nginx/modules | grep stream; nginx -V 2>&1 | tr " " "\n" | grep -- --with-stream'
 ```
-Expected: 输出 `ngx_stream_module.so`（其余动态模块可一并出现，无妨）。
+Expected: `nginx -V` 含 `--with-stream`（静态编译内置）；modules 目录**无** `ngx_stream_module.so`（2026-09-09 实测），故 nginx.conf **不得写 load_module**。
 
 - [ ] **Step 2: 确认镜像内 bash 可用（healthcheck 依赖 /dev/tcp 探测）**
 
@@ -89,7 +89,7 @@ Expected: 输出 `port 5000 free`。若列出 ControlCenter 监听，说明 AirP
 # 仅 nginx（portal 域）持有宿主端口；stream 静态上游在启动期解析服务名，
 # 依赖 portal 最后一批启动（common/compose-list.sh），勿提前单独拉起本服务。
 
-load_module modules/ngx_stream_module.so;
+# stream 已随官方镜像静态编译内置（nginx -V: --with-stream），无需 load_module。
 
 user  nginx;
 worker_processes  auto;
@@ -235,7 +235,7 @@ docker run --rm --network glseven \
   nginx:1.30.4 nginx -t
 ```
 Expected: `nginx: configuration file /etc/nginx/nginx.conf syntax is ok` + `test is successful`。
-说明：此时 conf.d 目录尚未创建，docker run 会创建空目录挂载，`include` 通配无匹配不报错，本步验证主配置骨架（map/load_module/stream include）；完整验证在 Task 3 之后重跑本命令。
+说明：此时 conf.d 目录尚未创建，docker run 会创建空目录挂载，`include` 通配无匹配不报错，本步验证主配置骨架（map/stream include）；完整验证在 Task 3 之后重跑本命令。
 
 ---
 

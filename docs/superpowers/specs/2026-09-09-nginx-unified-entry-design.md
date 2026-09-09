@@ -143,7 +143,7 @@ nginx 监听端口 = 容器原生端口；多个容器共用同一原生端口�
 ### 5.1 文件结构（按容器拆分，一容器一文件）
 
 - `portal/conf/nginx.conf`（**新增**，挂载覆盖 `/etc/nginx/nginx.conf`）：
-  - `load_module modules/ngx_stream_module.so;`（官方镜像内置该动态模块）
+  - stream 为官方镜像静态编译内置（`nginx -V: --with-stream`，modules 目录无 ngx_stream_module.so），无需 load_module
   - `http` 块：mime.types、`keepalive_timeout 65`、`client_max_body_size 512m`（nexus 制品/open-webui 文件上传）、WebSocket 升级头 `map $http_upgrade $connection_upgrade`、`include /etc/nginx/conf.d/*.conf;`
   - `stream` 块：`proxy_connect_timeout 10s` / `proxy_timeout 12h` 顶层参数、`include /etc/nginx/stream-conf.d/*.conf;`
 - `portal/conf/snippets/proxy.conf`（**新增**）：反代通用参数片段，conf.d 各 vhost include
@@ -190,7 +190,7 @@ macOS 解析器不支持 hosts 通配符，且浏览器仅对 `*.localhost` 免�
 
 | 文件 | 改动类型 | 内容 |
 |---|---|---|
-| `portal/conf/nginx.conf` | 新增 | 主配置：load_module + http 块（含 WebSocket map）include conf.d；stream 块 include stream-conf.d（§5.1） |
+| `portal/conf/nginx.conf` | 新增 | 主配置：http 块（含 WebSocket map）include conf.d；stream 块 include stream-conf.d（§5.1） |
 | `portal/conf/snippets/proxy.conf` | 新增 | 反代通用参数片段 |
 | `portal/conf/conf.d/*.conf` | 新增 ×16 | 每容器一文件：门户 portal.conf + 15 个服务 vhost（elk/apisix 多端点同文件） |
 | `portal/conf/stream-conf.d/*.conf` | 新增 ×11 | 每容器一文件：15 条 stream 透传（rabbitmq 3 条同文件） |
