@@ -3,11 +3,17 @@
 #   已初始化的卷手动导入：
 #     docker cp openldap/bootstrap/admin-entry.ldif openldap:/tmp/
 #     docker exec openldap ldapadd -x -D "cn=admin,dc=glseven,dc=com" -w admin -f /tmp/admin-entry.ldif
-# 该条目的 userPassword 与 olcRootDN 凭据保持一致（common/env/openldap.env 的 LDAP_ADMIN_PASSWORD），
-# bind 校验实际走 olcRootPW，条目属性仅为满足 PLA 的"登录者必须存在"检查。
+# 条目自带 uid=admin（posixAccount auxiliary class），使 PLA 默认的 uid 登录模式可用：
+# USER ID 填 admin。bind 校验实际走 olcRootPW（与 common/env/openldap.env 的 LDAP_ADMIN_PASSWORD 一致），
+# 因此登录后具备 rootDN 全权；条目属性仅为满足 PLA 的"登录者必须存在且可检索"检查。
 dn: cn=admin,dc=glseven,dc=com
 objectClass: organizationalRole
 objectClass: simpleSecurityObject
+objectClass: posixAccount
 cn: admin
+uid: admin
+uidNumber: 10000
+gidNumber: 10000
+homeDirectory: /home/admin
 description: LDAP root administrator entry (PLA login requires a real directory entry; bind credentials are olcRootDN)
 userPassword: admin
