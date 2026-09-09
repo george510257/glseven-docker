@@ -21,3 +21,7 @@ data/
 
 # Git worktrees (isolated workspaces)
 .worktrees/
+
+# Tool-generated artifacts (Qoder repowiki, session state)
+.qoder/
+.omc/
