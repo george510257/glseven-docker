@@ -56,7 +56,7 @@ bash shutdown.sh
 | Adminer | http://adminer.glseven.local:8080 | MySQL/Mongo 管理 |
 | mongo-express | http://mongo-express.glseven.local:8081 | MongoDB 管理（凭据见 env） |
 | RabbitMQ 管理 | http://rabbitmq.glseven.local:15672 | AMQP/MQTT 走下方协议端口 |
-| phpLDAPadmin | http://php-ldap-admin.glseven.local:8080 | LDAP 管理 |
+| phpLDAPadmin | http://php-ldap-admin.glseven.local:8080 | LDAP 管理（USER ID 填完整 DN：cn=admin,dc=glseven,dc=com） |
 | Keycloak | http://keycloak.glseven.local:8080 | Admin Console / 认证端点 |
 | Nacos | http://nacos.glseven.local:8080 | 控制台（API/gRPC 走下方协议端口） |
 | XXL-JOB | http://xxl-job-admin.glseven.local:8080/xxl-job-admin/ | 控制台（context-path 保留前缀） |
