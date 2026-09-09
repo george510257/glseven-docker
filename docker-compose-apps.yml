@@ -34,11 +34,14 @@ services:
         limits:
           cpus: "4.0"
           memory: 8G
-        reservations:
-          devices:
-            - driver: nvidia
-              capabilities: [ gpu ]
-              count: all
+        # GPU 硬请求已移除：nvidia device 驱动在 macOS(Docker Desktop) 上不存在，
+        # 会导致 compose up 失败（could not select device driver "nvidia"）；
+        # ollama 无 GPU 时自动回退 CPU 运行。Linux 宿主如需 GPU 加速，按需追加：
+        #   reservations:
+        #     devices:
+        #       - driver: nvidia
+        #         capabilities: [ gpu ]
+        #         count: all
 
   open-webui:
     image: ghcr.io/open-webui/open-webui:v0.11.3

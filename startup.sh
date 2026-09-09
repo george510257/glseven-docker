@@ -15,12 +15,24 @@ echo "启动 GLSeven Docker 容器..."
 echo "DOCKER_VOLUME: $DOCKER_VOLUME"
 echo "==========================================="
 
-# 创建必要的目录并设置权限
+# chown 仅在 Linux 宿主上有意义；macOS(Docker Desktop) 非 root 无法 chown，降级为警告（VirtioFS 由 VM 侧处理 uid 映射）
+chown_dir() {
+  local dir="$1" uid="$2"
+  if ! chown -R "$uid" "$dir" 2>/dev/null; then
+    echo "WARN: chown -R $uid $dir failed (non-root or unsupported platform), continuing..."
+  fi
+}
+
+# 创建必要的目录并设置权限（目录创建失败仍致命）
 echo "Creating directories..."
-mkdir -p "$DOCKER_VOLUME/nexus3/data/"    && chown -R 200   "$DOCKER_VOLUME/nexus3/data/"   || { echo "Error: Failed to create nexus3 data directory"; exit 1; }
-mkdir -p "$DOCKER_VOLUME/prometheus/data" && chown -R 65534 "$DOCKER_VOLUME/prometheus/data" || { echo "Error: Failed to create prometheus data directory"; exit 1; }
-mkdir -p "$DOCKER_VOLUME/grafana/data"    && chown -R 472   "$DOCKER_VOLUME/grafana/data"   || { echo "Error: Failed to create grafana data directory"; exit 1; }
-mkdir -p "$DOCKER_VOLUME/elk/data"        && chown -R 1000  "$DOCKER_VOLUME/elk/data"        || { echo "Error: Failed to create elk data directory"; exit 1; }
+mkdir -p "$DOCKER_VOLUME/nexus3/data/"    || { echo "Error: Failed to create nexus3 data directory"; exit 1; }
+chown_dir "$DOCKER_VOLUME/nexus3/data/" 200
+mkdir -p "$DOCKER_VOLUME/prometheus/data" || { echo "Error: Failed to create prometheus data directory"; exit 1; }
+chown_dir "$DOCKER_VOLUME/prometheus/data" 65534
+mkdir -p "$DOCKER_VOLUME/grafana/data"    || { echo "Error: Failed to create grafana data directory"; exit 1; }
+chown_dir "$DOCKER_VOLUME/grafana/data" 472
+mkdir -p "$DOCKER_VOLUME/elk/data"        || { echo "Error: Failed to create elk data directory"; exit 1; }
+chown_dir "$DOCKER_VOLUME/elk/data" 1000
 
 # 创建 Docker 网络（幂等，已存在则跳过）
 if ! docker network inspect glseven &>/dev/null; then
