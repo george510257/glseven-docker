@@ -42,6 +42,8 @@ services:
     volumes:
       - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/sessions:/app/storage/framework/sessions
       - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/logs:/app/storage/logs
+      # 修正版 ldap.php：上游镜像遗漏 connections.ldap.base_dn，导致 DN 登录后置检查误报 501（见文件头注释）。
+      - ./phpldapadmin/conf/ldap.php:/app/config/ldap.php:ro
     depends_on:
       openldap:
         condition: service_healthy

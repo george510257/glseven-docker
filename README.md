@@ -149,6 +149,7 @@ flush privileges;
 
 - **elk**（sebp/elk，amd64-only 镜像）：Apple Silicon macOS 的 Rosetta 模拟层不翻译 seccomp 系统调用，Elasticsearch 9 启动即失败（错误特征 `seccomp unavailable: CONFIG_SECCOMP not compiled into kernel`）；Linux amd64 主机正常。内存受限环境可通过 `ES_JAVA_OPTS` / `LS_JAVA_OPTS` 降低 JVM 堆。
 - **Portainer 初始化**：创建 admin 前需从容器日志取 Setup token（`docker logs portainer 2>&1 | grep setup_token`，每次重启会刷新）；且 5 分钟未完成初始化会自动锁定（页面不可操作），需 `docker restart portainer` 后用新 token 重来。初始化请求经 nginx 时需保留原始 Host 头（已在 snippets/proxy.conf 用 `$http_host` 配置）。
+- **phpLDAPadmin 登录**：登录者必须是目录内真实条目，而 osixia/openldap 只把 `cn=admin` 设为 olcRootDN（DB 级 bind 凭据，无目录条目），因此仓库附 `openldap/bootstrap/admin-entry.ldif`，首次初始化卷后需导入一次（命令见该文件头注释）。登录后若见一次 500 页，刷新即可（登录表单闪存残留，一次性）。另：上游镜像 `config/ldap.php` 遗漏 `base_dn` 键，已由挂载的修正版 `phpldapadmin/conf/ldap.php` 补齐。
 - **Registry :5000**：端口绑定主体是 nginx（portal），但 macOS 上该端口仍可能被 AirPlay Receiver（ControlCenter 进程）占用导致容器启动报 `port is already allocated`，需在系统设置关闭 AirPlay Receiver（全栈唯一需宿主侧配合的端口）。
 - **ollama GPU**：GPU 请求默认关闭（docker-compose-apps.yml 中 `deploy.resources.reservations` 为注释块）。Linux 宿主如需 GPU 加速，取消该注释块后 `docker compose -f docker-compose-apps.yml up -d ollama`，要求 NVIDIA 驱动 ≥550（旧卡 ≥570）；macOS Docker Desktop 无 nvidia device driver，保持默认 CPU 运行。
 - **open-webui 首启**：需从 HuggingFace 下载 embedding 模型，网络受限环境可用环境变量 `HF_ENDPOINT=https://hf-mirror.com` 指向镜像源。
