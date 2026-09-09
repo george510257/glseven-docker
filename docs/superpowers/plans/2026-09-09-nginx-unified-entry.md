@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** nginx（portal 域）成为唯一持有宿主端口的容器（8000 http + 18 条 stream TCP 透明转发），其余 22 个服务零宿主端口；每个镜像拥有二级域名（=容器名）。
+**Goal:** nginx（portal 域）成为唯一持有宿主端口的容器（8000 http + 18 条 stream TCP 透明转发），其余 22 个服务零宿主端口；每个镜像一个二级域名（=容器名，零别名，多端点同域名不同端口）。
 
-**Architecture:** http 块按 Host 头做子域名虚拟主机（20 个 server 块）；stream 块按原生端口号透明转发（端口号=容器原生端口，客户端连接串零改动）。上游服务名为静态解析，依赖 portal 最后一批启动（compose-list.sh 不变）。
+**Architecture:** http 块按 Host 头做子域名虚拟主机（18 个 server 块，每实例一个域名）；stream 块按原生端口号透明转发（端口号=容器原生端口，客户端连接串零改动；多端点实例同域名不同端口）。上游服务名为静态解析，依赖 portal 最后一批启动（compose-list.sh 不变）。
 
 **Tech Stack:** Docker Compose v2、nginx:1.30.4 官方镜像（内置 ngx_stream_module.so 动态模块）、macOS /etc/hosts。
 
@@ -20,7 +20,7 @@
 |---|---|---|
 | `portal/conf/nginx.conf` | 新增 | 主配置：load_module stream + http 块 + stream 块（18 条转发） |
 | `portal/conf/snippets/proxy.conf` | 新增 | 反代通用参数片段，default.conf 各 vhost include |
-| `portal/conf/default.conf` | 重写 | 20 个 server 块（根域静态门户 + 19 个服务端点 vhost） |
+| `portal/conf/default.conf` | 重写 | 18 个 server 块（根域静态门户 + 17 个实例 vhost） |
 | `docker-compose-portal.yml` | 重写 | 挂载新配置；ports 改为 8000 + 18 条 stream；新增 healthcheck |
 | `docker-compose-infra.yml` | 修改 | 删除 mysql/redis/mongo/mongo-express/adminer/rabbitmq/kafka 的 ports |
 | `docker-compose-observability.yml` | 修改 | 删除 prometheus/grafana/elk 的 ports |
@@ -177,7 +177,7 @@ Expected: `nginx: configuration file /etc/nginx/nginx.conf syntax is ok` + `test
 
 ---
 
-### Task 3: 重写 portal/conf/default.conf（20 个 server 块）
+### Task 3: 重写 portal/conf/default.conf（18 个 server 块）
 
 **Files:**
 - Modify（整体重写）: `portal/conf/default.conf`
@@ -185,9 +185,9 @@ Expected: `nginx: configuration file /etc/nginx/nginx.conf syntax is ok` + `test
 - [ ] **Step 1: 用以下内容完整替换 `portal/conf/default.conf`**
 
 ```nginx
-# 子域名虚拟主机：二级域名 = 容器名（根域 glseven.local 为静态门户）。
+# 子域名虚拟主机：二级域名 = 容器名（根域 glseven.local 为静态门户），零别名。
 # 通用代理参数见 /etc/nginx/snippets/proxy.conf（compose 挂载 portal/conf/snippets/proxy.conf）。
-# 命名规则：二级域名 = 容器名；别名仅 es（elk 的 ES API）与 apisix-admin（APISIX Admin API）。
+# 多端点实例同域名不同端口：elk 的 ES API 走 :9200、apisix 的 Admin API 走 :9180（stream 原生端口）。
 
 # WebSocket 升级头映射（http 上下文，供 snippets/proxy.conf 引用）
 map $http_upgrade $connection_upgrade {
@@ -273,15 +273,6 @@ server {
     }
 }
 
-server {
-    listen 80;
-    server_name es.glseven.local;
-    location / {
-        proxy_pass http://elk:9200;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
 # ---- security ----
 server {
     listen 80;
@@ -347,15 +338,6 @@ server {
     }
 }
 
-server {
-    listen 80;
-    server_name apisix-admin.glseven.local;
-    location / {
-        proxy_pass http://apisix:9180;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
 # ---- apps ----
 server {
     listen 80;
@@ -411,7 +393,7 @@ services:
   # Portal 172.18.6.x ==================================================================================================
 
   nginx:
-    # 统一入口：http 子域名反代（20 个 server 块）+ stream TCP 透明转发（18 条原生端口）。
+    # 统一入口：http 子域名反代（18 个 server 块，每实例一个域名）+ stream TCP 透明转发（18 条原生端口）。
     # 全栈唯一持有宿主端口的容器；stream 静态上游依赖 portal 最后一批启动（compose-list.sh）。
     image: nginx:1.30.4
     container_name: nginx
@@ -739,7 +721,7 @@ git commit -m "refactor(platform,apps): drop direct host ports (access via nginx
 **Files:**
 - Modify（整体重写）: `portal/html/index.html`
 
-- [ ] **Step 1: 用以下内容完整替换 `portal/html/index.html`（分组结构保留，14 张卡片全部换为 data-host + data-path 机制，链接由脚本按 nginx 实际暴露端口拼装）**
+- [ ] **Step 1: 用以下内容完整替换 `portal/html/index.html`（分组结构保留，16 张卡片每实例一张，data-host + data-path 机制，链接由脚本按 nginx 实际暴露端口拼装）**
 
 ```html
 <!DOCTYPE html>
@@ -795,16 +777,14 @@ git commit -m "refactor(platform,apps): drop direct host ports (access via nginx
     <a class="card" data-host="xxl-job-admin" data-path="/xxl-job-admin/" href="#"><div class="name">XXL-JOB</div><div class="desc">分布式任务调度</div><div class="port">xxl-job-admin.glseven.local</div></a>
     <a class="card" data-host="nexus3" href="#"><div class="name">Nexus</div><div class="desc">Maven / npm 制品仓库</div><div class="port">nexus3.glseven.local</div></a>
     <a class="card" data-host="portainer" href="#"><div class="name">Portainer</div><div class="desc">Docker 容器管理</div><div class="port">portainer.glseven.local</div></a>
-    <a class="card" data-host="apisix" href="#"><div class="name">APISIX</div><div class="desc">API 网关数据面（Admin API 见 apisix-admin）</div><div class="port">apisix.glseven.local</div></a>
-    <a class="card" data-host="apisix-admin" href="#"><div class="name">APISIX Admin</div><div class="desc">网关 Admin API（X-API-KEY 见 apisix/conf/config.yaml）</div><div class="port">apisix-admin.glseven.local</div></a>
+    <a class="card" data-host="apisix" href="#"><div class="name">APISIX</div><div class="desc">API 网关数据面（Admin API 同域名 :9180）</div><div class="port">apisix.glseven.local</div></a>
   </div>
 
   <div class="group-title">可观测性</div>
   <div class="grid">
     <a class="card" data-host="prometheus" href="#"><div class="name">Prometheus</div><div class="desc">指标采集与查询</div><div class="port">prometheus.glseven.local</div></a>
     <a class="card" data-host="grafana" href="#"><div class="name">Grafana</div><div class="desc">监控可视化面板</div><div class="port">grafana.glseven.local</div></a>
-    <a class="card" data-host="elk" href="#"><div class="name">Kibana</div><div class="desc">ELK 日志检索</div><div class="port">elk.glseven.local</div></a>
-    <a class="card" data-host="es" href="#"><div class="name">Elasticsearch</div><div class="desc">ES REST API / 查询</div><div class="port">es.glseven.local</div></a>
+    <a class="card" data-host="elk" href="#"><div class="name">Kibana</div><div class="desc">ELK 日志检索（ES API 同域名 :9200）</div><div class="port">elk.glseven.local</div></a>
   </div>
 
   <div class="group-title">应用</div>
@@ -865,8 +845,8 @@ bash shutdown.sh
 # 1. 准备环境变量（.env 提供 DOCKER_VOLUME / REDIS_PASSWORD 等插值，无 .env 时使用内置默认值）
 cp .env.example .env
 
-# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 25 个主机名（二级域名 = 容器名 + 3 别名）
-echo '127.0.0.1 glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local es.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local apisix-admin.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local' | sudo tee -a /etc/hosts
+# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 23 个主机名（二级域名 = 容器名，零别名）
+echo '127.0.0.1 glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local' | sudo tee -a /etc/hosts
 
 # 3. 启动：BASE 批次 → 等待 MySQL 健康 → DEFERRED 批次 → PORTAL
 bash startup.sh
@@ -898,12 +878,10 @@ bash shutdown.sh
 | XXL-JOB | http://xxl-job-admin.glseven.local:8000/xxl-job-admin/ | 控制台（context-path 保留前缀） |
 | Nexus | http://nexus3.glseven.local:8000 | Web UI（Docker Registry 走 localhost:5000） |
 | Portainer | http://portainer.glseven.local:8000 | 容器管理 |
-| APISIX | http://apisix.glseven.local:8000 | 数据面（Admin API 见下行） |
-| APISIX Admin | http://apisix-admin.glseven.local:8000 | X-API-KEY 见 apisix/conf/config.yaml |
+| APISIX | http://apisix.glseven.local:8000 | 数据面（Admin API 同域名 :9180，X-API-KEY 见 apisix/conf/config.yaml） |
 | Prometheus | http://prometheus.glseven.local:8000 | 指标（7 个抓取 job） |
 | Grafana | http://grafana.glseven.local:8000 | 可视化（数据源已 provision） |
-| Kibana | http://elk.glseven.local:8000 | 日志检索 |
-| Elasticsearch | http://es.glseven.local:8000 | ES REST API |
+| Kibana | http://elk.glseven.local:8000 | 日志检索（ES API 同域名 :9200） |
 | etcd | http://etcd.glseven.local:8000 | REST/health/metrics |
 | Ollama | http://ollama.glseven.local:8000 | API 状态页 |
 | Open WebUI | http://open-webui.glseven.local:8000 | LLM 对话 |
@@ -986,9 +964,10 @@ Run:
 curl -sf -o /dev/null -w "portal %{http_code}\n"  http://glseven.local:8000/
 curl -sf -o /dev/null -w "etcd %{http_code}\n"     http://etcd.glseven.local:8000/version
 curl -sf -o /dev/null -w "ollama %{http_code}\n"   http://ollama.glseven.local:8000/api/tags
-curl -sf -o /dev/null -w "es %{http_code}\n"       http://es.glseven.local:8000/
 curl -sf -o /dev/null -w "grafana %{http_code}\n"  http://grafana.glseven.local:8000/api/health
 curl -sf -o /dev/null -w "keycloak %{http_code}\n" http://keycloak.glseven.local:8000/
+# 同域名不同端口（stream 原生端口）：APISIX Admin API
+curl -s -o /dev/null -w "apisix-admin %{http_code}\n" -H "X-API-KEY: 7705a28bc106c39a9e959427f9351c51" http://apisix.glseven.local:9180/apisix/admin/routes
 ```
 Expected: 每行输出 `2xx`/`3xx`（keycloak 为 302 跳登录属正常）。若域名不解析，执行 Task 9 Step 1 的 hosts 初始化命令。
 
@@ -1032,6 +1011,6 @@ git commit -m "fix: e2e validation fixes for unified entry"
 1. `docker compose config -q` 全部 6 文件零告警 ✓（Task 10 Step 1）
 2. `docker ps` 仅 nginx 有端口映射 ✓（Task 10 Step 3）
 3. 18 条 stream 端口 `nc` 全通 ✓（Task 10 Step 5）
-4. 20 个子域名站点可访问 ✓（Task 10 Step 6/9）
+4. 18 个子域名站点可访问 ✓（Task 10 Step 6/9）
 5. WebSocket / SSE / Keycloak 回调 / Registry push 链路 ✓（Task 10 Step 6-9）
 6. Kafka/Nacos 透明性（原生端口连接）✓（Task 10 Step 5/7）
