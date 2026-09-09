@@ -22,8 +22,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.5.1
-    ports:
-      - "11434:11434"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: [ "CMD-SHELL", "ollama ls" ]
       interval: 30s
@@ -57,8 +56,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.5.2
-    ports:
-      - "8080:8080"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # /health 为 open-webui 自带端点；探针工具按 Task 1 验证结果。
       test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:8080/health || exit 1" ]
@@ -82,8 +80,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.5.3
-    ports:
-      - "3001:3000"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # 探针工具按 Task 1 验证结果（默认 wget；仅 curl 可用则等价替换）。
       test: [ "CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1" ]

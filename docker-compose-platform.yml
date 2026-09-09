@@ -22,12 +22,9 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.4.1
-    ports:
-      - "48081:8080"
-      - "8848:8848"
-      - "9848:9848"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
-      # v3 控制台/就绪端点在 8080（容器内直连，宿主映射 48081）；8848 的 actuator health 在 v3 已不暴露。
+      # v3 控制台/就绪端点在 8080（容器内直连，宿主经 nacos.glseven.local 代理）；8848 的 actuator health 在 v3 已不暴露。
       # 依赖 nacos 3.0.3+ 行为：模块 not ready 返回 500（nacos#13437/#13644），降级镜像后勿沿用此探针。
       test: ["CMD", "curl", "-f", "http://localhost:8080/v3/console/health/readiness"]
       interval: 10s
@@ -48,8 +45,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.4.2
-    ports:
-      - "48080:8080"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/xxl-job-admin/actuator/health"]
       interval: 10s
@@ -69,9 +65,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.4.3
-    ports:
-      - "5000:5000"   # Docker Registry
-      - "8081:8081"   # Nexus Web UI
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # /service/rest/v1/status 就绪时 200、启动中 503（匿名可访问）。
       test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:8081/service/rest/v1/status || exit 1" ]
@@ -94,8 +88,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.4.4
-    ports:
-      - "9000:9000"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
 
   apisix:
     # 独立网关组件：数据面 + Admin API 就绪，路由留空由微服务开发自行配置。
@@ -112,9 +105,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.4.5
-    ports:
-      - "9080:9080"   # 网关数据面（无路由时 404 为预期）
-      - "9180:9180"   # Admin API（X-API-KEY 见 apisix/conf/config.yaml）
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # 镜像内无 curl/wget（Task 1 实测），改用 bash /dev/tcp 对数据面 9080 做 TCP 存活探测。
       test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9080' || exit 1" ]
