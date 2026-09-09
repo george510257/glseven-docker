@@ -4,7 +4,7 @@
 
 ## 快速开始
 
-前置：Docker Compose v2+（compose 文件使用顶层 `name:` 字段）；GPU 场景要求宿主机 NVIDIA 驱动 ≥550（旧卡 ≥570）。
+前置：Docker Compose v2+（compose 文件使用顶层 `name:` 字段）。GPU 场景默认关闭，见下方「已知平台限制」的 ollama GPU 条目。
 
 ```shell
 # 1. 准备环境变量（.env 提供 DOCKER_VOLUME / REDIS_PASSWORD 等插值，无 .env 时使用内置默认值）
@@ -72,7 +72,7 @@ bash shutdown.sh
 | MoonTV | http://moontv.glseven.local:3000 | 影视聚合 |
 
 全部端点统一为「域名 + 容器原生端口」。纯 TCP 协议端口由 nginx stream 透明转发（**端口号 = 原生默认**，也可用域名形式如 `mysql.glseven.local:3306`）：
-mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、MQTT 1883、MQTT-WS 15675、kafka 9092、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
+mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、MQTT 1883、MQTT-WS 15675、kafka 9092（宿主 Kafka 客户端需另加 hosts 条目 `127.0.0.1 kafka`——引导后元数据指向裸名 `kafka:9092`；或仅在容器网络内使用）、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
 
 仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380。
 
@@ -149,5 +149,5 @@ flush privileges;
 
 - **elk**（sebp/elk，amd64-only 镜像）：Apple Silicon macOS 的 Rosetta 模拟层不翻译 seccomp 系统调用，Elasticsearch 9 启动即失败（错误特征 `seccomp unavailable: CONFIG_SECCOMP not compiled into kernel`）；Linux amd64 主机正常。内存受限环境可通过 `ES_JAVA_OPTS` / `LS_JAVA_OPTS` 降低 JVM 堆。
 - **Registry :5000**：端口绑定主体是 nginx（portal），但 macOS 上该端口仍可能被 AirPlay Receiver（ControlCenter 进程）占用导致容器启动报 `port is already allocated`，需在系统设置关闭 AirPlay Receiver（全栈唯一需宿主侧配合的端口）。
-- **ollama GPU**：`deploy.resources.reservations` 的 nvidia 设备声明仅在具备 NVIDIA 驱动的 Linux 主机生效；macOS Docker Desktop 无 nvidia device driver，容器会创建失败，验证时需临时去掉该段。
+- **ollama GPU**：GPU 请求默认关闭（docker-compose-apps.yml 中 `deploy.resources.reservations` 为注释块）。Linux 宿主如需 GPU 加速，取消该注释块后 `docker compose -f docker-compose-apps.yml up -d ollama`，要求 NVIDIA 驱动 ≥550（旧卡 ≥570）；macOS Docker Desktop 无 nvidia device driver，保持默认 CPU 运行。
 - **open-webui 首启**：需从 HuggingFace 下载 embedding 模型，网络受限环境可用环境变量 `HF_ENDPOINT=https://hf-mirror.com` 指向镜像源。
