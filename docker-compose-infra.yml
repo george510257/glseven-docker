@@ -23,9 +23,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.1.1
-    ports:
-      - "3306:3306"
-      # Port 33060 (MySQL X Protocol) is not used by any service; removed to reduce attack surface.
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # $$ 让容器内 shell 展开 env_file 注入的 MYSQL_ROOT_PASSWORD，不依赖 compose 插值。
       test: [ "CMD-SHELL", "mysqladmin ping -h127.0.0.1 -p$$MYSQL_ROOT_PASSWORD --silent" ]
@@ -49,8 +47,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.1.2
-    ports:
-      - "6379:6379"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a '${REDIS_PASSWORD:-glseven_redis_2024}' ping"]
       interval: 10s
@@ -72,8 +69,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.1.3
-    ports:
-      - "27017:27017"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet" ]
       interval: 10s
@@ -96,8 +92,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.1.4
-    ports:
-      - "18081:8081"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # 镜像内仅 wget 可用（Task 1 实测，无 curl）。
       # 启用了 basic auth（mongo-express.env），凭据经 $$ 由容器内 shell 展开，改 env 即自动跟随。
@@ -120,8 +115,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.1.5
-    ports:
-      - "18080:8080"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://127.0.0.1:8080/ || exit 1" ]
       interval: 10s
@@ -143,11 +137,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.1.6
-    ports:
-      - "35672:5672"   # AMQP
-      - "15672:15672"  # Management UI
-      - "1883:1883"    # MQTT
-      - "15675:15675"  # MQTT over WebSocket
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: [ "CMD-SHELL", "rabbitmq-diagnostics -q ping" ]
       interval: 10s
@@ -170,8 +160,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.1.7
-    ports:
-      - "9092:9092"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1" ]
       interval: 10s
@@ -183,8 +172,8 @@ services:
     # v3.7.1 已发布（2026-07）但仅 2 个月，选 3.6 成熟维护线保障 APISIX 互操作（沿 nginx stable 先例）。
     # 供 APISIX（platform 域）与 Prometheus 使用：跨 compose project 不写 depends_on，
     # 由 BASE 批次先于 DEFERRED 启动时序 + APISIX 启动重试 + restart: always 兜底。
-    # 纯容器网络内部使用，不对宿主机映射端口。
-    # etcd 默认无认证，安全边界=glseven 容器网络；勿新增宿主端口映射。
+    # 宿主访问经 nginx（portal）stream 2379 透传（开发环境全量代理，用户明示决策，见规格 §4.3）。
+    # etcd 默认无认证，安全边界=glseven 容器网络；2380 peer 端口保持内网。
     image: quay.io/coreos/etcd:v3.6.14
     container_name: etcd
     hostname: etcd
