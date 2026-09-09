@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** nginx（portal 域）成为唯一持有宿主端口的容器（26 个宿主端口 = 11 个 http 监听 + 15 条 stream，监听端口一律等于容器原生端口），其余 22 个服务零宿主端口；每个镜像一个二级域名（=容器名，零别名）。
+**Goal:** nginx（portal 域）成为唯一持有宿主端口的容器（26 个宿主端口 = 11 个 http 监听 + 15 条 stream，监听端口一律等于容器原生端口），其余 22 个服务零宿主端口；每个镜像一个二级域名（=容器名，零别名）；nginx 配置按容器拆分（conf.d / stream-conf.d 各一容器一文件）。
 
-**Architecture:** http 块监听端口 = 容器原生端口，按 server_name（Host 头）分流（18 个 server 块分布于 11 个监听端口；8080/3000/8081 为多实例共享端口）；stream 块按原生端口号透明转发（15 条，客户端连接串零改动；多端点实例同域名不同端口）。上游服务名为静态解析，依赖 portal 最后一批启动（compose-list.sh 不变）。
+**Architecture:** http 块监听端口 = 容器原生端口，按 server_name（Host 头）分流（18 个 server 块分布于 11 个监听端口；8080/3000/8081 为多实例共享端口）；stream 块按原生端口号透明转发（15 条，客户端连接串零改动；多端点实例同域名不同端口）。配置按容器拆分：http 侧 `conf.d/<容器名>.conf`（16 文件，含门户 portal.conf），stream 侧 `stream-conf.d/<容器名>.conf`（11 文件）。上游服务名为静态解析，依赖 portal 最后一批启动（compose-list.sh 不变）。
 
 **Tech Stack:** Docker Compose v2、nginx:1.30.4 官方镜像（内置 ngx_stream_module.so 动态模块）、macOS /etc/hosts。
 
@@ -18,10 +18,12 @@
 
 | 文件 | 操作 | 职责 |
 |---|---|---|
-| `portal/conf/nginx.conf` | 新增 | 主配置：load_module stream + http 块 + stream 块（15 条转发） |
-| `portal/conf/snippets/proxy.conf` | 新增 | 反代通用参数片段，default.conf 各 vhost include |
-| `portal/conf/default.conf` | 重写 | 18 个 server 块分布于 11 个监听端口（监听端口 = 容器原生端口） |
-| `docker-compose-portal.yml` | 重写 | 挂载新配置；ports 改为 26 个端口（8000 门户 + 10 个原生 http 监听 + 15 条 stream）；healthcheck 探 8000 |
+| `portal/conf/nginx.conf` | 新增 | 主配置：load_module + http 块（含 WebSocket map）include conf.d；stream 块 include stream-conf.d |
+| `portal/conf/snippets/proxy.conf` | 新增 | 反代通用参数片段，conf.d 各 vhost include |
+| `portal/conf/stream-conf.d/<容器名>.conf` | 新增 ×11 | stream TCP 透传，每容器一文件（rabbitmq 3 条、openldap/nacos/elk 各 2 条同文件） |
+| `portal/conf/conf.d/<容器名>.conf` | 新增 ×16 | http 虚拟主机，每容器一文件（elk/apisix 多端点同文件；portal.conf 为根域门户） |
+| `portal/conf/default.conf` | 删除 | 旧单文件静态站，职责由 conf.d/portal.conf 承接 |
+| `docker-compose-portal.yml` | 重写 | 挂载目录化（nginx.conf/snippets/conf.d/stream-conf.d/html）；ports 改为 26 个端口（8000 门户 + 10 个原生 http 监听 + 15 条 stream）；healthcheck 探 8000 |
 | `docker-compose-infra.yml` | 修改 | 删除 mysql/redis/mongo/mongo-express/adminer/rabbitmq/kafka 的 ports |
 | `docker-compose-observability.yml` | 修改 | 删除 prometheus/grafana/elk 的 ports |
 | `docker-compose-security.yml` | 修改 | 删除 openldap/php-ldap-admin/keycloak 的 ports |
@@ -73,16 +75,17 @@ Expected: 输出 `port 5000 free`。若列出 ControlCenter 监听，说明 AirP
 
 ---
 
-### Task 2: 新增 portal/conf/nginx.conf 与 snippets/proxy.conf
+### Task 2: 新增 nginx.conf、snippets 与 stream-conf.d/（每容器一文件）
 
 **Files:**
 - Create: `portal/conf/nginx.conf`
 - Create: `portal/conf/snippets/proxy.conf`
+- Create: `portal/conf/stream-conf.d/*.conf`（11 个文件，见 Step 3）
 
 - [ ] **Step 1: 创建 `portal/conf/nginx.conf`**
 
 ```nginx
-# GlSeven 统一入口主配置：http 子域名反代 + stream TCP 透明转发。
+# GlSeven 统一入口主配置：http 按容器拆分（conf.d/<容器名>.conf）+ stream 按容器拆分（stream-conf.d/<容器名>.conf）。
 # 仅 nginx（portal 域）持有宿主端口；stream 静态上游在启动期解析服务名，
 # 依赖 portal 最后一批启动（common/compose-list.sh），勿提前单独拉起本服务。
 
@@ -112,41 +115,30 @@ http {
     # nexus 制品上传 / open-webui 文件上传
     client_max_body_size 512m;
 
+    # WebSocket 升级头映射（供 conf.d 各 vhost include 的 snippets/proxy.conf 引用）
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
+    # 每容器一个配置文件（含静态门户 portal.conf）
     include /etc/nginx/conf.d/*.conf;
 }
 
 stream {
-    # 默认 10m 会切断 MySQL/LDAP/Kafka 空闲长连接，显式放宽。
+    # 默认 10m 会切断 MySQL/LDAP/Kafka 空闲长连接，显式放宽（作用于全部 stream 转发）。
     proxy_connect_timeout 10s;
     proxy_timeout 12h;
 
-    # infra ------------------------------------------------------------------
-    server { listen 3306;  proxy_pass mysql:3306; }
-    server { listen 6379;  proxy_pass redis:6379; }
-    server { listen 27017; proxy_pass mongo:27017; }
-    server { listen 5672;  proxy_pass rabbitmq:5672; }   # AMQP（由 35672 回归默认）
-    server { listen 1883;  proxy_pass rabbitmq:1883; }   # MQTT
-    server { listen 15675; proxy_pass rabbitmq:15675; }  # MQTT over WebSocket
-    server { listen 9092;  proxy_pass kafka:9092; }      # 端口号不变，advertised.listeners 透明
-    server { listen 2379;  proxy_pass etcd:2379; }       # HTTP REST 与 gRPC 混合端口，gRPC 不能走 http 反代；2380 peer 保持内网
-    # security ---------------------------------------------------------------
-    server { listen 389;   proxy_pass openldap:389; }
-    server { listen 636;   proxy_pass openldap:636; }    # LDAPS，TLS 透传
-    # platform ---------------------------------------------------------------
-    server { listen 8848;  proxy_pass nacos:8848; }
-    server { listen 9848;  proxy_pass nacos:9848; }      # 客户端按主端口+1000 推导，透明
-    server { listen 5000;  proxy_pass nexus3:5000; }     # Docker Registry（AirPlay 见 README）
-    # apps -------------------------------------------------------------------
-    server { listen 11434; proxy_pass ollama:11434; }    # HTTP API 经 TCP 透传，curl 照常可用
-    # observability ----------------------------------------------------------
-    server { listen 5044;  proxy_pass elk:5044; }        # Beats（ES API 9200 走 http vhost，见 default.conf）
+    # 每容器一个配置文件（15 条转发：rabbitmq 3 条、openldap/nacos/elk 各 2 条同文件）
+    include /etc/nginx/stream-conf.d/*.conf;
 }
 ```
 
 - [ ] **Step 2: 创建 `portal/conf/snippets/proxy.conf`**
 
 ```nginx
-# 子域名反代通用参数（default.conf 各 vhost include；compose 以 :ro 挂载）。
+# 反代通用参数（conf.d 各 vhost include；compose 以目录 :ro 挂载）。
 proxy_http_version 1.1;
 proxy_set_header Host              $host;
 proxy_set_header X-Real-IP         $remote_addr;
@@ -159,42 +151,114 @@ proxy_send_timeout  3600s;
 proxy_buffering     off;     # open-webui SSE 流式输出平滑
 ```
 
-- [ ] **Step 3: 语法与解析预检（依赖 Task 1 Step 3 的栈在运行）**
+- [ ] **Step 3: 创建 `portal/conf/stream-conf.d/` 下 11 个文件（每容器一文件）**
+
+**`portal/conf/stream-conf.d/mysql.conf`**
+```nginx
+# stream：MySQL 原生端口透传
+server { listen 3306; proxy_pass mysql:3306; }
+```
+
+**`portal/conf/stream-conf.d/redis.conf`**
+```nginx
+# stream：Redis 原生端口透传
+server { listen 6379; proxy_pass redis:6379; }
+```
+
+**`portal/conf/stream-conf.d/mongo.conf`**
+```nginx
+# stream：MongoDB 原生端口透传
+server { listen 27017; proxy_pass mongo:27017; }
+```
+
+**`portal/conf/stream-conf.d/rabbitmq.conf`**
+```nginx
+# stream：RabbitMQ 多协议透传（AMQP 由 35672 回归默认）
+server { listen 5672;  proxy_pass rabbitmq:5672; }   # AMQP
+server { listen 1883;  proxy_pass rabbitmq:1883; }   # MQTT
+server { listen 15675; proxy_pass rabbitmq:15675; }  # MQTT over WebSocket
+```
+
+**`portal/conf/stream-conf.d/kafka.conf`**
+```nginx
+# stream：Kafka 原生端口透传（advertised.listeners 透明）
+server { listen 9092; proxy_pass kafka:9092; }
+```
+
+**`portal/conf/stream-conf.d/etcd.conf`**
+```nginx
+# stream：etcd 客户端端口透传（HTTP REST 与 gRPC 混合端口，gRPC 不能走 http 反代；2380 peer 保持内网）
+server { listen 2379; proxy_pass etcd:2379; }
+```
+
+**`portal/conf/stream-conf.d/openldap.conf`**
+```nginx
+# stream：OpenLDAP 透传
+server { listen 389; proxy_pass openldap:389; }
+server { listen 636; proxy_pass openldap:636; }   # LDAPS，TLS 透传
+```
+
+**`portal/conf/stream-conf.d/nacos.conf`**
+```nginx
+# stream：Nacos API/gRPC 透传（客户端按主端口+1000 推导，透明）
+server { listen 8848; proxy_pass nacos:8848; }
+server { listen 9848; proxy_pass nacos:9848; }
+```
+
+**`portal/conf/stream-conf.d/nexus3.conf`**
+```nginx
+# stream：Docker Registry 透传（AirPlay 见 README）
+server { listen 5000; proxy_pass nexus3:5000; }
+```
+
+**`portal/conf/stream-conf.d/ollama.conf`**
+```nginx
+# stream：Ollama HTTP API 经 TCP 透传（curl 照常可用）
+server { listen 11434; proxy_pass ollama:11434; }
+```
+
+**`portal/conf/stream-conf.d/elk.conf`**
+```nginx
+# stream：Beats 透传（ES API 9200 走 conf.d/elk.conf 的 http vhost）
+server { listen 5044; proxy_pass elk:5044; }
+```
+
+- [ ] **Step 4: 语法预检（依赖 Task 1 Step 3 的栈在运行）**
 
 Run:
 ```shell
 docker run --rm --network glseven \
   -v "$PWD/portal/conf/nginx.conf:/etc/nginx/nginx.conf:ro" \
-  -v "$PWD/portal/conf/snippets/proxy.conf:/etc/nginx/snippets/proxy.conf:ro" \
-  -v "$PWD/portal/conf/default.conf:/etc/nginx/conf.d/default.conf:ro" \
+  -v "$PWD/portal/conf/snippets:/etc/nginx/snippets:ro" \
+  -v "$PWD/portal/conf/conf.d:/etc/nginx/conf.d:ro" \
+  -v "$PWD/portal/conf/stream-conf.d:/etc/nginx/stream-conf.d:ro" \
   nginx:1.30.4 nginx -t
 ```
 Expected: `nginx: configuration file /etc/nginx/nginx.conf syntax is ok` + `test is successful`。
-说明：此时 default.conf 仍是旧版（仅静态站），该命令验证的是新旧混合的最小集；完整验证在 Task 3 之后重跑本命令。
+说明：此时 conf.d 目录尚未创建，docker run 会创建空目录挂载，`include` 通配无匹配不报错，本步验证主配置骨架（map/load_module/stream include）；完整验证在 Task 3 之后重跑本命令。
 
 ---
 
-### Task 3: 重写 portal/conf/default.conf（18 个 server 块，11 个监听端口）
+### Task 3: 删除 default.conf，按容器创建 conf.d/（16 个文件）
 
 **Files:**
-- Modify（整体重写）: `portal/conf/default.conf`
+- Delete: `portal/conf/default.conf`
+- Create: `portal/conf/conf.d/*.conf`（16 个文件，见 Step 2/3）
 
-- [ ] **Step 1: 用以下内容完整替换 `portal/conf/default.conf`**
+- [ ] **Step 1: 删除旧单文件静态站配置**
+
+Run:
+```shell
+git rm portal/conf/default.conf
+```
+Expected: `rm 'portal/conf/default.conf'`。
+
+- [ ] **Step 2: 创建门户与共享端口组文件（11 个，每容器一文件）**
+
+**`portal/conf/conf.d/portal.conf`**（根域静态门户，nginx 自身）
 
 ```nginx
-# 子域名虚拟主机：二级域名 = 容器名（根域 glseven.local 为静态门户），零别名。
-# 监听端口 = 容器原生端口；同一原生端口被多个容器使用时（8080/3000/8081），
-# nginx 绑定一次、按 server_name（Host 头）分流到各自上游。
-# 通用代理参数见 /etc/nginx/snippets/proxy.conf（compose 挂载 portal/conf/snippets/proxy.conf）。
-# 纯 TCP 协议端口（数据库/消息/LDAP/etcd 等）不经此处，见 nginx.conf 的 stream 块。
-
-# WebSocket 升级头映射（http 上下文，供 snippets/proxy.conf 引用）
-map $http_upgrade $connection_upgrade {
-    default upgrade;
-    ''      close;
-}
-
-# 门户（nginx 自身）：全栈唯一非原生端口约定（宿主 8000，见 compose ports 注释）
+# 根域静态门户（nginx 自身）：全栈唯一非原生端口约定（宿主 8000，见 compose ports 注释）
 server {
     listen 8000;
     server_name glseven.local;
@@ -206,8 +270,12 @@ server {
         try_files $uri $uri/ =404;
     }
 }
+```
 
-# ---- 原生端口 3000：grafana / moontv ----
+**`portal/conf/conf.d/grafana.conf`**
+
+```nginx
+# Grafana 监控可视化（原生端口 3000）
 server {
     listen 3000;
     server_name grafana.glseven.local;
@@ -216,7 +284,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
+**`portal/conf/conf.d/moontv.conf`**
+
+```nginx
+# MoonTV (LunaTV) 影视聚合（原生端口 3000，与 grafana 同端口按 Host 分流）
 server {
     listen 3000;
     server_name moontv.glseven.local;
@@ -225,8 +298,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
-# ---- 原生端口 8081：mongo-express / nexus3 ----
+**`portal/conf/conf.d/mongo-express.conf`**
+
+```nginx
+# mongo-express MongoDB Web 管理（原生端口 8081）
 server {
     listen 8081;
     server_name mongo-express.glseven.local;
@@ -235,7 +312,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
+**`portal/conf/conf.d/nexus3.conf`**
+
+```nginx
+# Nexus3 Web UI（原生端口 8081，与 mongo-express 同端口按 Host 分流；Registry 5000 走 stream）
 server {
     listen 8081;
     server_name nexus3.glseven.local;
@@ -244,8 +326,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
-# ---- 原生端口 8080：adminer / php-ldap-admin / keycloak / nacos / xxl-job-admin / open-webui ----
+**`portal/conf/conf.d/adminer.conf`**
+
+```nginx
+# Adminer 数据库管理（原生端口 8080）
 server {
     listen 8080;
     server_name adminer.glseven.local;
@@ -254,7 +340,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
+**`portal/conf/conf.d/php-ldap-admin.conf`**
+
+```nginx
+# phpLDAPadmin 目录管理（原生端口 8080，8080 组按 Host 分流）
 server {
     listen 8080;
     server_name php-ldap-admin.glseven.local;
@@ -263,7 +354,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
+**`portal/conf/conf.d/keycloak.conf`**
+
+```nginx
+# Keycloak 统一身份认证（原生端口 8080；代理头由 KC_PROXY_HEADERS=xforwarded 配合）
 server {
     listen 8080;
     server_name keycloak.glseven.local;
@@ -272,7 +368,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
+**`portal/conf/conf.d/nacos.conf`**
+
+```nginx
+# Nacos v3 控制台（原生端口 8080；Open API/gRPC 8848/9848 走 stream）
 server {
     listen 8080;
     server_name nacos.glseven.local;
@@ -281,7 +382,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
+**`portal/conf/conf.d/xxl-job-admin.conf`**
+
+```nginx
+# XXL-JOB 控制台（原生端口 8080；context-path 保留前缀）
 server {
     listen 8080;
     server_name xxl-job-admin.glseven.local;
@@ -290,7 +396,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
+**`portal/conf/conf.d/open-webui.conf`**
+
+```nginx
+# Open WebUI LLM 对话前端（原生端口 8080；SSE 流式由 snippets 的 proxy_buffering off 保障）
 server {
     listen 8080;
     server_name open-webui.glseven.local;
@@ -299,8 +410,14 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
-# ---- 原生端口 9000：portainer ----
+- [ ] **Step 3: 创建独占端口文件（5 个）**
+
+**`portal/conf/conf.d/portainer.conf`**
+
+```nginx
+# Portainer 容器管理（原生端口 9000；WebSocket 由 snippets Upgrade 头保障）
 server {
     listen 9000;
     server_name portainer.glseven.local;
@@ -309,8 +426,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
-# ---- 原生端口 9090：prometheus ----
+**`portal/conf/conf.d/prometheus.conf`**
+
+```nginx
+# Prometheus 指标查询（原生端口 9090）
 server {
     listen 9090;
     server_name prometheus.glseven.local;
@@ -319,8 +440,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
-# ---- 原生端口 5601/9200：elk（Kibana / ES API，同域名不同端口）----
+**`portal/conf/conf.d/elk.conf`**（多端点：Kibana + ES API 同文件）
+
+```nginx
+# ELK：Kibana UI（5601）与 ES API（9200）同域名不同端口
 server {
     listen 5601;
     server_name elk.glseven.local;
@@ -338,8 +463,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
-# ---- 原生端口 15672：rabbitmq 管理 ----
+**`portal/conf/conf.d/rabbitmq.conf`**
+
+```nginx
+# RabbitMQ 管理台（原生端口 15672；AMQP/MQTT 走 stream-conf.d/rabbitmq.conf）
 server {
     listen 15672;
     server_name rabbitmq.glseven.local;
@@ -348,8 +477,12 @@ server {
         include /etc/nginx/snippets/proxy.conf;
     }
 }
+```
 
-# ---- 原生端口 9080/9180：apisix 数据面 / Admin API（同域名不同端口）----
+**`portal/conf/conf.d/apisix.conf`**（多端点：数据面 + Admin API 同文件）
+
+```nginx
+# APISIX：数据面（9080）与 Admin API（9180，X-API-KEY 鉴权）同域名不同端口
 server {
     listen 9080;
     server_name apisix.glseven.local;
@@ -369,9 +502,9 @@ server {
 }
 ```
 
-- [ ] **Step 2: 重跑完整配置预检（含新 vhost 的上游解析）**
+- [ ] **Step 4: 重跑完整配置预检（含全部 vhost 的上游解析）**
 
-Run: 同 Task 2 Step 3 的 docker run 命令。
+Run: 同 Task 2 Step 4 的 docker run 命令（此时 conf.d/stream-conf.d 均已就绪）。
 Expected: `syntax is ok` + `test is successful`。若报 `host not found in upstream`，确认对应容器在运行（Task 1 Step 3）。
 
 ---
@@ -405,8 +538,9 @@ services:
       - common/env/common.env
     volumes:
       - ./portal/conf/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./portal/conf/snippets/proxy.conf:/etc/nginx/snippets/proxy.conf:ro
-      - ./portal/conf/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./portal/conf/snippets:/etc/nginx/snippets:ro
+      - ./portal/conf/conf.d:/etc/nginx/conf.d:ro
+      - ./portal/conf/stream-conf.d:/etc/nginx/stream-conf.d:ro
       - ./portal/html:/usr/share/nginx/html:ro
     networks:
       glseven:
@@ -458,8 +592,8 @@ Expected: 输出 `COMPOSE-OK`（无告警）。
 - [ ] **Step 3: 提交 portal 全套（Task 2-4）**
 
 ```shell
-git add portal/conf/nginx.conf portal/conf/snippets/proxy.conf portal/conf/default.conf docker-compose-portal.yml
-git commit -m "feat(portal): nginx unified entry (15 stream forwards + 18 vhost server blocks on native ports)"
+git add -A portal/conf docker-compose-portal.yml
+git commit -m "feat(portal): nginx unified entry (per-container conf.d/stream-conf.d, 26 native-port listeners)"
 ```
 
 ---
@@ -472,7 +606,7 @@ git commit -m "feat(portal): nginx unified entry (15 stream forwards + 18 vhost 
 统一替换文本（每个服务的 `ports:` 块删除后，在原位置留下）：
 
 ```yaml
-    # 宿主访问统一经 nginx（portal）代理：stream 原生端口见 portal/conf/nginx.conf，子域名见 portal/conf/default.conf。
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
 ```
 
 - [ ] **Step 1: mysql —— 将以下整块替换为统一替换文本**
@@ -949,13 +1083,14 @@ docker ps --format '{{.Names}}\t{{.Ports}}' | grep -v '^nginx' | grep '0.0.0.0' 
 ```
 Expected: 输出 `ONLY-NGINX-HAS-PORTS`。
 
-- [ ] **Step 4: 容器内 nginx 配置最终验证**
+- [ ] **Step 4: 容器内 nginx 配置最终验证（含拆分文件计数）**
 
 Run:
 ```shell
 docker exec nginx nginx -t
+docker exec nginx sh -c 'ls /etc/nginx/conf.d/*.conf | wc -l; ls /etc/nginx/stream-conf.d/*.conf | wc -l'
 ```
-Expected: `syntax is ok` + `test is successful`。
+Expected: `syntax is ok` + `test is successful`；计数两行分别为 `16`（conf.d）与 `11`（stream-conf.d）。
 
 - [ ] **Step 5: 26 端口连通矩阵（11 http 监听 + 15 stream）**
 

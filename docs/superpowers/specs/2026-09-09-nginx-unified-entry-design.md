@@ -101,7 +101,9 @@ nginx 监听端口 = 容器原生端口；多个容器共用同一原生端口�
 | 9080 | `apisix.glseven.local` | apisix:9080（数据面） |
 | 9180 | `apisix.glseven.local` | apisix:9180（Admin API，X-API-KEY） |
 
-**命名与端口规则**：二级域名 = 容器名（如 `nexus3`、`php-ldap-admin`、`xxl-job-admin`），**零别名**（根域 `glseven.local` 为静态门户）。**URL 端口 = 容器原生端口**：`grafana.glseven.local:3000` → grafana:3000、`keycloak.glseven.local:8080` → keycloak:8080；多端点实例同域名不同端口（`elk.glseven.local:5601` Kibana / `:9200` ES）。无 HTTP 端点的服务（mysql/redis/mongo/kafka/openldap）其二级域名仅作 DNS 解析（/etc/hosts → 127.0.0.1），配合 stream 原生端口使用，无需 nginx 配置。etcd/ollama 的 HTTP 访问同域名走 stream 原生端口（`etcd.glseven.local:2379`、`ollama.glseven.local:11434`）。
+**命名与端口规则**：二级域名 = 容器名（如 `nexus3`、`php-ldap-admin`、`xxl-job-admin`），**零别名**（根域 `glseven.local` 为静态门户）。**URL 端口 = 容器原生端口**：`grafana.glseven.local:3000` → grafana:3000、`keycloak.glseven.local:8080` → keycloak:8080；多端点实例同域名不同端口（`elk.glseven.local:5601` Kibana / `:9200` ES）。无 HTTP 端点的服务（mysql/redis/mongo/kafka/openldap）其二级域名仅作 DNS 解析（/etc/hosts → 127.0.0.1），配合 stream 原生端口使用；etcd/ollama 的 HTTP 访问同域名走 stream 原生端口（`etcd.glseven.local:2379`、`ollama.glseven.local:11434`）。
+
+**配置文件按容器拆分（一容器一文件）**：http 侧 `portal/conf/conf.d/<容器名>.conf`（16 个，含根域门户 `portal.conf`；elk/apisix 多端点多 server 块同文件）；stream 侧 `portal/conf/stream-conf.d/<容器名>.conf`（11 个；rabbitmq 3 条、openldap/nacos/elk 各 2 条同文件）。WebSocket `map` 等公共指令在 `nginx.conf` 的 http 块，拆分文件仅含 server 块。
 
 **删除的 14 个 UI 直连端口**（18081、18080、15672、9090、3000、5601、6080、48082、48081、48080、8081、9000、8080、3001）：原归属容器不再绑定，其中同号端口由 nginx 以原生号重新接管。
 
@@ -138,13 +140,16 @@ nginx 监听端口 = 容器原生端口；多个容器共用同一原生端口�
 
 ## 5. nginx 配置设计
 
-### 5.1 文件结构
+### 5.1 文件结构（按容器拆分，一容器一文件）
 
 - `portal/conf/nginx.conf`（**新增**，挂载覆盖 `/etc/nginx/nginx.conf`）：
   - `load_module modules/ngx_stream_module.so;`（官方镜像内置该动态模块）
-  - `http` 块：mime.types、`keepalive_timeout 65`、`client_max_body_size 512m`（nexus 制品/open-webui 文件上传）、`include /etc/nginx/conf.d/*.conf;`
-  - `stream` 块：15 条 `upstream` + `server` 转发
-- `portal/conf/default.conf`（**重写**）：18 个 server 块分布于 11 个监听端口（监听端口 = 容器原生端口）
+  - `http` 块：mime.types、`keepalive_timeout 65`、`client_max_body_size 512m`（nexus 制品/open-webui 文件上传）、WebSocket 升级头 `map $http_upgrade $connection_upgrade`、`include /etc/nginx/conf.d/*.conf;`
+  - `stream` 块：`proxy_connect_timeout 10s` / `proxy_timeout 12h` 顶层参数、`include /etc/nginx/stream-conf.d/*.conf;`
+- `portal/conf/snippets/proxy.conf`（**新增**）：反代通用参数片段，conf.d 各 vhost include
+- `portal/conf/conf.d/<容器名>.conf`（**新增 ×16**）：http 虚拟主机，每容器一文件；多端点容器（elk :5601/:9200、apisix :9080/:9180）多 server 块同文件；`portal.conf` 为根域静态门户
+- `portal/conf/stream-conf.d/<容器名>.conf`（**新增 ×11**）：stream 透传，每容器一文件；多协议容器多 server 块同文件（rabbitmq 3 条、openldap/nacos/elk 各 2 条）
+- `portal/conf/default.conf`（**删除**）：旧单文件静态站配置，职责由 conf.d/portal.conf 承接
 
 ### 5.2 关键参数
 
@@ -185,9 +190,12 @@ macOS 解析器不支持 hosts 通配符，且浏览器仅对 `*.localhost` 免�
 
 | 文件 | 改动类型 | 内容 |
 |---|---|---|
-| `portal/conf/nginx.conf` | 新增 | 主配置：load_module + http + stream（§5.1） |
-| `portal/conf/default.conf` | 重写 | 18 个 server 块分布于 11 个监听端口（§4.2/§5.2） |
-| `docker-compose-portal.yml` | 修改 | 挂载 nginx.conf；ports 改为 26 个端口（8000 门户 + 10 个原生 http 监听 + 15 条 stream）；healthcheck 改探 8000 |
+| `portal/conf/nginx.conf` | 新增 | 主配置：load_module + http 块（含 WebSocket map）include conf.d；stream 块 include stream-conf.d（§5.1） |
+| `portal/conf/snippets/proxy.conf` | 新增 | 反代通用参数片段 |
+| `portal/conf/conf.d/*.conf` | 新增 ×16 | 每容器一文件：门户 portal.conf + 15 个服务 vhost（elk/apisix 多端点同文件） |
+| `portal/conf/stream-conf.d/*.conf` | 新增 ×11 | 每容器一文件：15 条 stream 透传（rabbitmq 3 条同文件） |
+| `portal/conf/default.conf` | 删除 | 旧单文件静态站配置，职责由 conf.d/portal.conf 承接 |
+| `docker-compose-portal.yml` | 修改 | 挂载目录化（nginx.conf/snippets/conf.d/stream-conf.d/html）；ports 改为 26 个端口（8000 门户 + 10 个原生 http 监听 + 15 条 stream）；healthcheck 改探 8000 |
 | `docker-compose-infra.yml` | 修改 | 删除 mysql/redis/mongo/mongo-express/adminer/rabbitmq/kafka 的 `ports:` |
 | `docker-compose-observability.yml` | 修改 | 删除 prometheus/grafana/elk 的 `ports:` |
 | `docker-compose-security.yml` | 修改 | 删除 openldap/php-ldap-admin/keycloak 的 `ports:` |
@@ -201,7 +209,7 @@ macOS 解析器不支持 hosts 通配符，且浏览器仅对 `*.localhost` 免�
 
 ## 8. 验证方案
 
-1. 静态校验：每个改动的 compose 文件 `docker compose config -q` 零告警；`nginx -t`（进入 nginx 容器）通过。
+1. 静态校验：每个改动的 compose 文件 `docker compose config -q` 零告警；`nginx -t`（进入 nginx 容器）通过；conf.d 16 个文件、stream-conf.d 11 个文件计数正确。
 2. 全量拉起（startup.sh）后：`docker ps` 仅 nginx 有端口映射；6 域 23 容器全部 healthy/running。
 3. 端口连通矩阵：对 26 个宿主端口逐项 `nc -vz 127.0.0.1 <port>`（11 http 监听 + 15 stream）；mysql/redis 用真实客户端登录验证（含 `mysql -h mysql.glseven.local` 域名形式）。
 4. 浏览器验证：18 个 server 块对应站点逐个访问（域名 + 原生端口），登录页/首页正常（需先完成 /etc/hosts 初始化）。
