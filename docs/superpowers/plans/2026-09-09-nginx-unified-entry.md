@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** nginx（portal 域）成为唯一持有宿主端口的容器（8000 http + 18 条 stream TCP 透明转发），其余 22 个服务零宿主端口；每个镜像一个二级域名（=容器名，零别名，多端点同域名不同端口）。
+**Goal:** nginx（portal 域）成为唯一持有宿主端口的容器（26 个宿主端口 = 11 个 http 监听 + 15 条 stream，监听端口一律等于容器原生端口），其余 22 个服务零宿主端口；每个镜像一个二级域名（=容器名，零别名）。
 
-**Architecture:** http 块按 Host 头做子域名虚拟主机（18 个 server 块，每实例一个域名）；stream 块按原生端口号透明转发（端口号=容器原生端口，客户端连接串零改动；多端点实例同域名不同端口）。上游服务名为静态解析，依赖 portal 最后一批启动（compose-list.sh 不变）。
+**Architecture:** http 块监听端口 = 容器原生端口，按 server_name（Host 头）分流（18 个 server 块分布于 11 个监听端口；8080/3000/8081 为多实例共享端口）；stream 块按原生端口号透明转发（15 条，客户端连接串零改动；多端点实例同域名不同端口）。上游服务名为静态解析，依赖 portal 最后一批启动（compose-list.sh 不变）。
 
 **Tech Stack:** Docker Compose v2、nginx:1.30.4 官方镜像（内置 ngx_stream_module.so 动态模块）、macOS /etc/hosts。
 
@@ -18,17 +18,17 @@
 
 | 文件 | 操作 | 职责 |
 |---|---|---|
-| `portal/conf/nginx.conf` | 新增 | 主配置：load_module stream + http 块 + stream 块（18 条转发） |
+| `portal/conf/nginx.conf` | 新增 | 主配置：load_module stream + http 块 + stream 块（15 条转发） |
 | `portal/conf/snippets/proxy.conf` | 新增 | 反代通用参数片段，default.conf 各 vhost include |
-| `portal/conf/default.conf` | 重写 | 18 个 server 块（根域静态门户 + 17 个实例 vhost） |
-| `docker-compose-portal.yml` | 重写 | 挂载新配置；ports 改为 8000 + 18 条 stream；新增 healthcheck |
+| `portal/conf/default.conf` | 重写 | 18 个 server 块分布于 11 个监听端口（监听端口 = 容器原生端口） |
+| `docker-compose-portal.yml` | 重写 | 挂载新配置；ports 改为 26 个端口（8000 门户 + 10 个原生 http 监听 + 15 条 stream）；healthcheck 探 8000 |
 | `docker-compose-infra.yml` | 修改 | 删除 mysql/redis/mongo/mongo-express/adminer/rabbitmq/kafka 的 ports |
 | `docker-compose-observability.yml` | 修改 | 删除 prometheus/grafana/elk 的 ports |
 | `docker-compose-security.yml` | 修改 | 删除 openldap/php-ldap-admin/keycloak 的 ports |
 | `docker-compose-platform.yml` | 修改 | 删除 nacos/xxl-job-admin/nexus3/portainer/apisix 的 ports |
 | `docker-compose-apps.yml` | 修改 | 删除 ollama/open-webui/moontv 的 ports |
 | `common/env/keycloak.env` | 修改 | 新增 `KC_PROXY_HEADERS=xforwarded` |
-| `portal/html/index.html` | 重写 | 卡片链接改为二级域名（=容器名） |
+| `portal/html/index.html` | 重写 | 卡片链接改为「二级域名:原生端口」（data-host + data-port） |
 | `README.md` | 修改 | /etc/hosts 初始化 + 新访问矩阵 + AirPlay 说明更新 |
 
 提交切分：Task 4（portal 全套）→ Task 5（infra）→ Task 6（observability/security + env）→ Task 7（platform/apps）→ Task 8（导航页）→ Task 9（README）→ Task 10 端到端验证（修复则追加 fix 提交）。
@@ -128,7 +128,7 @@ stream {
     server { listen 1883;  proxy_pass rabbitmq:1883; }   # MQTT
     server { listen 15675; proxy_pass rabbitmq:15675; }  # MQTT over WebSocket
     server { listen 9092;  proxy_pass kafka:9092; }      # 端口号不变，advertised.listeners 透明
-    server { listen 2379;  proxy_pass etcd:2379; }       # 开发环境全量代理；2380 peer 保持内网
+    server { listen 2379;  proxy_pass etcd:2379; }       # HTTP REST 与 gRPC 混合端口，gRPC 不能走 http 反代；2380 peer 保持内网
     # security ---------------------------------------------------------------
     server { listen 389;   proxy_pass openldap:389; }
     server { listen 636;   proxy_pass openldap:636; }    # LDAPS，TLS 透传
@@ -136,13 +136,10 @@ stream {
     server { listen 8848;  proxy_pass nacos:8848; }
     server { listen 9848;  proxy_pass nacos:9848; }      # 客户端按主端口+1000 推导，透明
     server { listen 5000;  proxy_pass nexus3:5000; }     # Docker Registry（AirPlay 见 README）
-    server { listen 9080;  proxy_pass apisix:9080; }     # 数据面
-    server { listen 9180;  proxy_pass apisix:9180; }     # Admin API
     # apps -------------------------------------------------------------------
-    server { listen 11434; proxy_pass ollama:11434; }
+    server { listen 11434; proxy_pass ollama:11434; }    # HTTP API 经 TCP 透传，curl 照常可用
     # observability ----------------------------------------------------------
-    server { listen 9200;  proxy_pass elk:9200; }        # Elasticsearch API
-    server { listen 5044;  proxy_pass elk:5044; }        # Beats
+    server { listen 5044;  proxy_pass elk:5044; }        # Beats（ES API 9200 走 http vhost，见 default.conf）
 }
 ```
 
@@ -177,7 +174,7 @@ Expected: `nginx: configuration file /etc/nginx/nginx.conf syntax is ok` + `test
 
 ---
 
-### Task 3: 重写 portal/conf/default.conf（18 个 server 块）
+### Task 3: 重写 portal/conf/default.conf（18 个 server 块，11 个监听端口）
 
 **Files:**
 - Modify（整体重写）: `portal/conf/default.conf`
@@ -186,8 +183,10 @@ Expected: `nginx: configuration file /etc/nginx/nginx.conf syntax is ok` + `test
 
 ```nginx
 # 子域名虚拟主机：二级域名 = 容器名（根域 glseven.local 为静态门户），零别名。
+# 监听端口 = 容器原生端口；同一原生端口被多个容器使用时（8080/3000/8081），
+# nginx 绑定一次、按 server_name（Host 头）分流到各自上游。
 # 通用代理参数见 /etc/nginx/snippets/proxy.conf（compose 挂载 portal/conf/snippets/proxy.conf）。
-# 多端点实例同域名不同端口：elk 的 ES API 走 :9200、apisix 的 Admin API 走 :9180（stream 原生端口）。
+# 纯 TCP 协议端口（数据库/消息/LDAP/etcd 等）不经此处，见 nginx.conf 的 stream 块。
 
 # WebSocket 升级头映射（http 上下文，供 snippets/proxy.conf 引用）
 map $http_upgrade $connection_upgrade {
@@ -195,9 +194,9 @@ map $http_upgrade $connection_upgrade {
     ''      close;
 }
 
-# 根域：静态门户
+# 门户（nginx 自身）：全栈唯一非原生端口约定（宿主 8000，见 compose ports 注释）
 server {
-    listen 80;
+    listen 8000;
     server_name glseven.local;
 
     root  /usr/share/nginx/html;
@@ -208,55 +207,9 @@ server {
     }
 }
 
-# ---- infra ----
+# ---- 原生端口 3000：grafana / moontv ----
 server {
-    listen 80;
-    server_name mongo-express.glseven.local;
-    location / {
-        proxy_pass http://mongo-express:8081;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
-server {
-    listen 80;
-    server_name adminer.glseven.local;
-    location / {
-        proxy_pass http://adminer:8080;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
-server {
-    listen 80;
-    server_name rabbitmq.glseven.local;
-    location / {
-        proxy_pass http://rabbitmq:15672;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
-server {
-    listen 80;
-    server_name etcd.glseven.local;
-    location / {
-        proxy_pass http://etcd:2379;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
-# ---- observability ----
-server {
-    listen 80;
-    server_name prometheus.glseven.local;
-    location / {
-        proxy_pass http://prometheus:9090;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
-server {
-    listen 80;
+    listen 3000;
     server_name grafana.glseven.local;
     location / {
         proxy_pass http://grafana:3000;
@@ -265,17 +218,45 @@ server {
 }
 
 server {
-    listen 80;
-    server_name elk.glseven.local;
+    listen 3000;
+    server_name moontv.glseven.local;
     location / {
-        proxy_pass http://elk:5601;
+        proxy_pass http://moontv:3000;
         include /etc/nginx/snippets/proxy.conf;
     }
 }
 
-# ---- security ----
+# ---- 原生端口 8081：mongo-express / nexus3 ----
 server {
-    listen 80;
+    listen 8081;
+    server_name mongo-express.glseven.local;
+    location / {
+        proxy_pass http://mongo-express:8081;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}
+
+server {
+    listen 8081;
+    server_name nexus3.glseven.local;
+    location / {
+        proxy_pass http://nexus3:8081;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}
+
+# ---- 原生端口 8080：adminer / php-ldap-admin / keycloak / nacos / xxl-job-admin / open-webui ----
+server {
+    listen 8080;
+    server_name adminer.glseven.local;
+    location / {
+        proxy_pass http://adminer:8080;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}
+
+server {
+    listen 8080;
     server_name php-ldap-admin.glseven.local;
     location / {
         proxy_pass http://php-ldap-admin:8080;
@@ -284,7 +265,7 @@ server {
 }
 
 server {
-    listen 80;
+    listen 8080;
     server_name keycloak.glseven.local;
     location / {
         proxy_pass http://keycloak:8080;
@@ -292,9 +273,8 @@ server {
     }
 }
 
-# ---- platform ----
 server {
-    listen 80;
+    listen 8080;
     server_name nacos.glseven.local;
     location / {
         proxy_pass http://nacos:8080;
@@ -303,7 +283,7 @@ server {
 }
 
 server {
-    listen 80;
+    listen 8080;
     server_name xxl-job-admin.glseven.local;
     location / {
         proxy_pass http://xxl-job-admin:8080;
@@ -312,44 +292,7 @@ server {
 }
 
 server {
-    listen 80;
-    server_name nexus3.glseven.local;
-    location / {
-        proxy_pass http://nexus3:8081;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
-server {
-    listen 80;
-    server_name portainer.glseven.local;
-    location / {
-        proxy_pass http://portainer:9000;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
-server {
-    listen 80;
-    server_name apisix.glseven.local;
-    location / {
-        proxy_pass http://apisix:9080;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
-# ---- apps ----
-server {
-    listen 80;
-    server_name ollama.glseven.local;
-    location / {
-        proxy_pass http://ollama:11434;
-        include /etc/nginx/snippets/proxy.conf;
-    }
-}
-
-server {
-    listen 80;
+    listen 8080;
     server_name open-webui.glseven.local;
     location / {
         proxy_pass http://open-webui:8080;
@@ -357,11 +300,70 @@ server {
     }
 }
 
+# ---- 原生端口 9000：portainer ----
 server {
-    listen 80;
-    server_name moontv.glseven.local;
+    listen 9000;
+    server_name portainer.glseven.local;
     location / {
-        proxy_pass http://moontv:3000;
+        proxy_pass http://portainer:9000;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}
+
+# ---- 原生端口 9090：prometheus ----
+server {
+    listen 9090;
+    server_name prometheus.glseven.local;
+    location / {
+        proxy_pass http://prometheus:9090;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}
+
+# ---- 原生端口 5601/9200：elk（Kibana / ES API，同域名不同端口）----
+server {
+    listen 5601;
+    server_name elk.glseven.local;
+    location / {
+        proxy_pass http://elk:5601;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}
+
+server {
+    listen 9200;
+    server_name elk.glseven.local;
+    location / {
+        proxy_pass http://elk:9200;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}
+
+# ---- 原生端口 15672：rabbitmq 管理 ----
+server {
+    listen 15672;
+    server_name rabbitmq.glseven.local;
+    location / {
+        proxy_pass http://rabbitmq:15672;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}
+
+# ---- 原生端口 9080/9180：apisix 数据面 / Admin API（同域名不同端口）----
+server {
+    listen 9080;
+    server_name apisix.glseven.local;
+    location / {
+        proxy_pass http://apisix:9080;
+        include /etc/nginx/snippets/proxy.conf;
+    }
+}
+
+server {
+    listen 9180;
+    server_name apisix.glseven.local;
+    location / {
+        proxy_pass http://apisix:9180;
         include /etc/nginx/snippets/proxy.conf;
     }
 }
@@ -393,7 +395,7 @@ services:
   # Portal 172.18.6.x ==================================================================================================
 
   nginx:
-    # 统一入口：http 子域名反代（18 个 server 块，每实例一个域名）+ stream TCP 透明转发（18 条原生端口）。
+    # 统一入口：http 虚拟主机（监听端口 = 容器原生端口，18 个 server 块）+ stream TCP 透明转发（15 条原生端口）。
     # 全栈唯一持有宿主端口的容器；stream 静态上游依赖 portal 最后一批启动（compose-list.sh）。
     image: nginx:1.30.4
     container_name: nginx
@@ -410,7 +412,17 @@ services:
       glseven:
         ipv4_address: 172.18.6.1
     ports:
-      - "8000:80"      # http：子域名虚拟主机 + 静态门户
+      - "8000:8000"    # http：静态门户（nginx 自身约定端口，全栈唯一非原生号）
+      - "3000:3000"    # http → grafana / moontv（同端口按 Host 分流）
+      - "8080:8080"    # http → adminer / php-ldap-admin / keycloak / nacos / xxl-job-admin / open-webui
+      - "8081:8081"    # http → mongo-express / nexus3
+      - "9000:9000"    # http → portainer
+      - "9090:9090"    # http → prometheus
+      - "5601:5601"    # http → elk Kibana
+      - "9200:9200"    # http → elk ES API
+      - "15672:15672"  # http → rabbitmq 管理
+      - "9080:9080"    # http → apisix 数据面
+      - "9180:9180"    # http → apisix Admin API
       - "3306:3306"    # stream → mysql
       - "6379:6379"    # stream → redis
       - "27017:27017"  # stream → mongo
@@ -418,20 +430,17 @@ services:
       - "1883:1883"    # stream → rabbitmq MQTT
       - "15675:15675"  # stream → rabbitmq MQTT-WS
       - "9092:9092"    # stream → kafka
-      - "2379:2379"    # stream → etcd（开发环境全量代理）
+      - "2379:2379"    # stream → etcd（HTTP REST/gRPC 透传）
       - "389:389"      # stream → openldap
       - "636:636"      # stream → openldap LDAPS
       - "8848:8848"    # stream → nacos Open API
       - "9848:9848"    # stream → nacos gRPC
       - "11434:11434"  # stream → ollama
-      - "9200:9200"    # stream → elk ES
       - "5044:5044"    # stream → elk Beats
       - "5000:5000"    # stream → nexus3 Docker Registry（AirPlay 见 README）
-      - "9080:9080"    # stream → apisix 数据面
-      - "9180:9180"    # stream → apisix Admin API
     healthcheck:
-      # 镜像内无 curl/wget（debian-slim 底座），沿用项目已验证的 bash /dev/tcp 探测模式。
-      test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/80' || exit 1" ]
+      # 镜像内无 curl/wget（debian-slim 底座），沿用项目已验证的 bash /dev/tcp 探测模式；探门户监听 8000。
+      test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8000' || exit 1" ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -450,7 +459,7 @@ Expected: 输出 `COMPOSE-OK`（无告警）。
 
 ```shell
 git add portal/conf/nginx.conf portal/conf/snippets/proxy.conf portal/conf/default.conf docker-compose-portal.yml
-git commit -m "feat(portal): nginx unified entry (18 stream forwards + 20 subdomain server blocks)"
+git commit -m "feat(portal): nginx unified entry (15 stream forwards + 18 vhost server blocks on native ports)"
 ```
 
 ---
@@ -721,7 +730,7 @@ git commit -m "refactor(platform,apps): drop direct host ports (access via nginx
 **Files:**
 - Modify（整体重写）: `portal/html/index.html`
 
-- [ ] **Step 1: 用以下内容完整替换 `portal/html/index.html`（分组结构保留，16 张卡片每实例一张，data-host + data-path 机制，链接由脚本按 nginx 实际暴露端口拼装）**
+- [ ] **Step 1: 用以下内容完整替换 `portal/html/index.html`（分组结构保留，16 张卡片每实例一张，data-host + data-port + data-path 机制，链接由脚本按「域名:原生端口」拼装）**
 
 ```html
 <!DOCTYPE html>
@@ -756,51 +765,50 @@ git commit -m "refactor(platform,apps): drop direct host ports (access via nginx
 <body>
 <div class="wrap">
   <h1>GlSeven 导航</h1>
-  <div class="sub">统一经 nginx 子域名代理（二级域名 = 容器名；首次使用需 /etc/hosts 初始化，见 README）</div>
+  <div class="sub">统一经 nginx 代理：二级域名 = 容器名，端口 = 容器原生端口（首次使用需 /etc/hosts 初始化，见 README）</div>
 
   <div class="group-title">基础设施</div>
   <div class="grid">
-    <a class="card" data-host="adminer" href="#"><div class="name">Adminer</div><div class="desc">MySQL / MongoDB 数据库管理</div><div class="port">adminer.glseven.local</div></a>
-    <a class="card" data-host="mongo-express" href="#"><div class="name">mongo-express</div><div class="desc">MongoDB Web 管理</div><div class="port">mongo-express.glseven.local</div></a>
-    <a class="card" data-host="rabbitmq" href="#"><div class="name">RabbitMQ 管理</div><div class="desc">队列 / 交换机 / 连接管理台</div><div class="port">rabbitmq.glseven.local</div></a>
+    <a class="card" data-host="adminer" data-port="8080" href="#"><div class="name">Adminer</div><div class="desc">MySQL / MongoDB 数据库管理</div><div class="port">adminer.glseven.local:8080</div></a>
+    <a class="card" data-host="mongo-express" data-port="8081" href="#"><div class="name">mongo-express</div><div class="desc">MongoDB Web 管理</div><div class="port">mongo-express.glseven.local:8081</div></a>
+    <a class="card" data-host="rabbitmq" data-port="15672" href="#"><div class="name">RabbitMQ 管理</div><div class="desc">队列 / 交换机 / 连接管理台</div><div class="port">rabbitmq.glseven.local:15672</div></a>
   </div>
 
   <div class="group-title">认证与身份</div>
   <div class="grid">
-    <a class="card" data-host="php-ldap-admin" href="#"><div class="name">phpLDAPadmin</div><div class="desc">OpenLDAP 目录管理</div><div class="port">php-ldap-admin.glseven.local</div></a>
-    <a class="card" data-host="keycloak" href="#"><div class="name">Keycloak</div><div class="desc">统一身份认证 SSO（Admin Console）</div><div class="port">keycloak.glseven.local</div></a>
+    <a class="card" data-host="php-ldap-admin" data-port="8080" href="#"><div class="name">phpLDAPadmin</div><div class="desc">OpenLDAP 目录管理</div><div class="port">php-ldap-admin.glseven.local:8080</div></a>
+    <a class="card" data-host="keycloak" data-port="8080" href="#"><div class="name">Keycloak</div><div class="desc">统一身份认证 SSO（Admin Console）</div><div class="port">keycloak.glseven.local:8080</div></a>
   </div>
 
   <div class="group-title">平台服务</div>
   <div class="grid">
-    <a class="card" data-host="nacos" href="#"><div class="name">Nacos</div><div class="desc">注册与配置中心</div><div class="port">nacos.glseven.local</div></a>
-    <a class="card" data-host="xxl-job-admin" data-path="/xxl-job-admin/" href="#"><div class="name">XXL-JOB</div><div class="desc">分布式任务调度</div><div class="port">xxl-job-admin.glseven.local</div></a>
-    <a class="card" data-host="nexus3" href="#"><div class="name">Nexus</div><div class="desc">Maven / npm 制品仓库</div><div class="port">nexus3.glseven.local</div></a>
-    <a class="card" data-host="portainer" href="#"><div class="name">Portainer</div><div class="desc">Docker 容器管理</div><div class="port">portainer.glseven.local</div></a>
-    <a class="card" data-host="apisix" href="#"><div class="name">APISIX</div><div class="desc">API 网关数据面（Admin API 同域名 :9180）</div><div class="port">apisix.glseven.local</div></a>
+    <a class="card" data-host="nacos" data-port="8080" href="#"><div class="name">Nacos</div><div class="desc">注册与配置中心</div><div class="port">nacos.glseven.local:8080</div></a>
+    <a class="card" data-host="xxl-job-admin" data-port="8080" data-path="/xxl-job-admin/" href="#"><div class="name">XXL-JOB</div><div class="desc">分布式任务调度</div><div class="port">xxl-job-admin.glseven.local:8080</div></a>
+    <a class="card" data-host="nexus3" data-port="8081" href="#"><div class="name">Nexus</div><div class="desc">Maven / npm 制品仓库</div><div class="port">nexus3.glseven.local:8081</div></a>
+    <a class="card" data-host="portainer" data-port="9000" href="#"><div class="name">Portainer</div><div class="desc">Docker 容器管理</div><div class="port">portainer.glseven.local:9000</div></a>
+    <a class="card" data-host="apisix" data-port="9080" href="#"><div class="name">APISIX</div><div class="desc">API 网关数据面（Admin API 同域名 :9180）</div><div class="port">apisix.glseven.local:9080</div></a>
   </div>
 
   <div class="group-title">可观测性</div>
   <div class="grid">
-    <a class="card" data-host="prometheus" href="#"><div class="name">Prometheus</div><div class="desc">指标采集与查询</div><div class="port">prometheus.glseven.local</div></a>
-    <a class="card" data-host="grafana" href="#"><div class="name">Grafana</div><div class="desc">监控可视化面板</div><div class="port">grafana.glseven.local</div></a>
-    <a class="card" data-host="elk" href="#"><div class="name">Kibana</div><div class="desc">ELK 日志检索（ES API 同域名 :9200）</div><div class="port">elk.glseven.local</div></a>
+    <a class="card" data-host="prometheus" data-port="9090" href="#"><div class="name">Prometheus</div><div class="desc">指标采集与查询</div><div class="port">prometheus.glseven.local:9090</div></a>
+    <a class="card" data-host="grafana" data-port="3000" href="#"><div class="name">Grafana</div><div class="desc">监控可视化面板</div><div class="port">grafana.glseven.local:3000</div></a>
+    <a class="card" data-host="elk" data-port="5601" href="#"><div class="name">Kibana</div><div class="desc">ELK 日志检索（ES API 同域名 :9200）</div><div class="port">elk.glseven.local:5601</div></a>
   </div>
 
   <div class="group-title">应用</div>
   <div class="grid">
-    <a class="card" data-host="open-webui" href="#"><div class="name">Open WebUI</div><div class="desc">Ollama 模型对话前端</div><div class="port">open-webui.glseven.local</div></a>
-    <a class="card" data-host="moontv" href="#"><div class="name">MoonTV (LunaTV)</div><div class="desc">影视聚合</div><div class="port">moontv.glseven.local</div></a>
-    <a class="card" data-host="ollama" href="#"><div class="name">Ollama</div><div class="desc">模型推理 API 状态页</div><div class="port">ollama.glseven.local</div></a>
+    <a class="card" data-host="open-webui" data-port="8080" href="#"><div class="name">Open WebUI</div><div class="desc">Ollama 模型对话前端</div><div class="port">open-webui.glseven.local:8080</div></a>
+    <a class="card" data-host="moontv" data-port="3000" href="#"><div class="name">MoonTV (LunaTV)</div><div class="desc">影视聚合</div><div class="port">moontv.glseven.local:3000</div></a>
+    <a class="card" data-host="ollama" data-port="11434" href="#"><div class="name">Ollama</div><div class="desc">模型推理 API（stream 透传）</div><div class="port">ollama.glseven.local:11434</div></a>
   </div>
 
   <footer>GlSeven Docker · nginx unified entry</footer>
 </div>
 <script>
-  // 链接 = 子域名（=容器名）+ nginx 当前暴露端口（跟随本页访问端口），协议端口类服务不走此处（见 README）。
+  // 链接 = 二级域名（=容器名）+ 容器原生端口（data-port），协议端口类服务不走此处（见 README）。
   document.querySelectorAll("a[data-host]").forEach(function (a) {
-    a.href = "http://" + a.dataset.host + ".glseven.local"
-      + (location.port ? ":" + location.port : "") + (a.dataset.path || "/");
+    a.href = "http://" + a.dataset.host + ".glseven.local:" + a.dataset.port + (a.dataset.path || "/");
   });
 </script>
 </body>
@@ -811,7 +819,7 @@ git commit -m "refactor(platform,apps): drop direct host ports (access via nginx
 
 ```shell
 git add portal/html/index.html
-git commit -m "feat(portal): nav cards link via per-container subdomains"
+git commit -m "feat(portal): nav cards link via subdomain:native-port"
 ```
 
 ---
@@ -864,31 +872,31 @@ bash shutdown.sh
 将原「## 服务访问入口」标题下的全部内容（原 48-68 行的表格与两段文字）替换为：
 
 ````markdown
-**nginx（portal）是唯一持有宿主端口的容器**（8000 http + 18 条 stream TCP），其余 22 个服务零宿主端口；二级域名 = 容器名，需先完成 /etc/hosts 初始化。
+**nginx（portal）是唯一持有宿主端口的容器**（26 个端口：8000 门户 + 10 个原生 http 监听 + 15 条 stream），其余 22 个服务零宿主端口；二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。
 
 | 服务 | 入口 | 说明 |
 |---|---|---|
 | 导航门户 | http://glseven.local:8000 | 全部入口聚合（nginx 静态页） |
-| Adminer | http://adminer.glseven.local:8000 | MySQL/Mongo 管理 |
-| mongo-express | http://mongo-express.glseven.local:8000 | MongoDB 管理（凭据见 env） |
-| RabbitMQ 管理 | http://rabbitmq.glseven.local:8000 | AMQP/MQTT 走下方协议端口 |
-| phpLDAPadmin | http://php-ldap-admin.glseven.local:8000 | LDAP 管理 |
-| Keycloak | http://keycloak.glseven.local:8000 | Admin Console / 认证端点 |
-| Nacos | http://nacos.glseven.local:8000 | 控制台（API/gRPC 走下方协议端口） |
-| XXL-JOB | http://xxl-job-admin.glseven.local:8000/xxl-job-admin/ | 控制台（context-path 保留前缀） |
-| Nexus | http://nexus3.glseven.local:8000 | Web UI（Docker Registry 走 localhost:5000） |
-| Portainer | http://portainer.glseven.local:8000 | 容器管理 |
-| APISIX | http://apisix.glseven.local:8000 | 数据面（Admin API 同域名 :9180，X-API-KEY 见 apisix/conf/config.yaml） |
-| Prometheus | http://prometheus.glseven.local:8000 | 指标（7 个抓取 job） |
-| Grafana | http://grafana.glseven.local:8000 | 可视化（数据源已 provision） |
-| Kibana | http://elk.glseven.local:8000 | 日志检索（ES API 同域名 :9200） |
-| etcd | http://etcd.glseven.local:8000 | REST/health/metrics |
-| Ollama | http://ollama.glseven.local:8000 | API 状态页 |
-| Open WebUI | http://open-webui.glseven.local:8000 | LLM 对话 |
-| MoonTV | http://moontv.glseven.local:8000 | 影视聚合 |
+| Adminer | http://adminer.glseven.local:8080 | MySQL/Mongo 管理 |
+| mongo-express | http://mongo-express.glseven.local:8081 | MongoDB 管理（凭据见 env） |
+| RabbitMQ 管理 | http://rabbitmq.glseven.local:15672 | AMQP/MQTT 走下方协议端口 |
+| phpLDAPadmin | http://php-ldap-admin.glseven.local:8080 | LDAP 管理 |
+| Keycloak | http://keycloak.glseven.local:8080 | Admin Console / 认证端点 |
+| Nacos | http://nacos.glseven.local:8080 | 控制台（API/gRPC 走下方协议端口） |
+| XXL-JOB | http://xxl-job-admin.glseven.local:8080/xxl-job-admin/ | 控制台（context-path 保留前缀） |
+| Nexus | http://nexus3.glseven.local:8081 | Web UI（Docker Registry 走 localhost:5000） |
+| Portainer | http://portainer.glseven.local:9000 | 容器管理 |
+| APISIX | http://apisix.glseven.local:9080 | 数据面（Admin API 同域名 :9180，X-API-KEY 见 apisix/conf/config.yaml） |
+| Prometheus | http://prometheus.glseven.local:9090 | 指标（7 个抓取 job） |
+| Grafana | http://grafana.glseven.local:3000 | 可视化（数据源已 provision） |
+| Kibana | http://elk.glseven.local:5601 | 日志检索（ES API 同域名 :9200） |
+| etcd | http://etcd.glseven.local:2379 | REST/health/metrics（stream TCP 透传，curl 可用） |
+| Ollama | http://ollama.glseven.local:11434 | API 状态页（stream TCP 透传） |
+| Open WebUI | http://open-webui.glseven.local:8080 | LLM 对话 |
+| MoonTV | http://moontv.glseven.local:3000 | 影视聚合 |
 
-协议端口（nginx stream 透明转发，**端口号 = 原生默认**，也可用域名形式如 `mysql.glseven.local:3306`）：
-mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、MQTT 1883、MQTT-WS 15675、kafka 9092、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、ES 9200、beats 5044、registry 5000、apisix 9080/9180。
+全部端点统一为「域名 + 容器原生端口」。纯 TCP 协议端口由 nginx stream 透明转发（**端口号 = 原生默认**，也可用域名形式如 `mysql.glseven.local:3306`）：
+mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、MQTT 1883、MQTT-WS 15675、kafka 9092、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
 
 仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380。
 ````
@@ -949,24 +957,25 @@ docker exec nginx nginx -t
 ```
 Expected: `syntax is ok` + `test is successful`。
 
-- [ ] **Step 5: stream 18 端口连通矩阵**
+- [ ] **Step 5: 26 端口连通矩阵（11 http 监听 + 15 stream）**
 
 Run:
 ```shell
-for p in 3306 6379 27017 5672 1883 15675 9092 2379 389 636 8848 9848 11434 9200 5044 5000 9080 9180; do nc -z -w 2 127.0.0.1 $p && echo "$p OK" || echo "$p FAIL"; done
+for p in 8000 3000 8080 8081 9000 9090 5601 9200 15672 9080 9180 3306 6379 27017 5672 1883 15675 9092 2379 389 636 8848 9848 11434 5044 5000; do nc -z -w 2 127.0.0.1 $p && echo "$p OK" || echo "$p FAIL"; done
 ```
-Expected: 18 行全部 `OK`。
+Expected: 26 行全部 `OK`。
 
 - [ ] **Step 6: 子域名 http 验证（需已完成 /etc/hosts 初始化）**
 
 Run:
 ```shell
 curl -sf -o /dev/null -w "portal %{http_code}\n"  http://glseven.local:8000/
-curl -sf -o /dev/null -w "etcd %{http_code}\n"     http://etcd.glseven.local:8000/version
-curl -sf -o /dev/null -w "ollama %{http_code}\n"   http://ollama.glseven.local:8000/api/tags
-curl -sf -o /dev/null -w "grafana %{http_code}\n"  http://grafana.glseven.local:8000/api/health
-curl -sf -o /dev/null -w "keycloak %{http_code}\n" http://keycloak.glseven.local:8000/
-# 同域名不同端口（stream 原生端口）：APISIX Admin API
+curl -sf -o /dev/null -w "etcd %{http_code}\n"     http://etcd.glseven.local:2379/version
+curl -sf -o /dev/null -w "ollama %{http_code}\n"   http://ollama.glseven.local:11434/api/tags
+curl -sf -o /dev/null -w "prometheus %{http_code}\n" http://prometheus.glseven.local:9090/-/healthy
+curl -sf -o /dev/null -w "grafana %{http_code}\n"  http://grafana.glseven.local:3000/api/health
+curl -sf -o /dev/null -w "keycloak %{http_code}\n" http://keycloak.glseven.local:8080/
+# 同域名不同端口：APISIX Admin API（:9180）
 curl -s -o /dev/null -w "apisix-admin %{http_code}\n" -H "X-API-KEY: 7705a28bc106c39a9e959427f9351c51" http://apisix.glseven.local:9180/apisix/admin/routes
 ```
 Expected: 每行输出 `2xx`/`3xx`（keycloak 为 302 跳登录属正常）。若域名不解析，执行 Task 9 Step 1 的 hosts 初始化命令。
@@ -990,7 +999,7 @@ Expected: `200`（匿名开）或 `401`（需鉴权）——非超时/000 即证
 
 - [ ] **Step 9: 人工验证清单（浏览器，需用户配合）**
 
-- 逐个访问导航页 20 个子域名站点，登录页/首页正常
+- 逐个访问 18 个 server 块对应站点（导航页 16 张卡片 + elk :9200 / apisix :9180 端点），登录页/首页正常
 - Portainer 进入某容器控制台（WebSocket）
 - open-webui 发起对话，SSE 流式输出平滑
 - keycloak 经子域名登录 admin 控制台（验证 KC_PROXY_HEADERS 下回调 URL 正确）
@@ -1010,7 +1019,7 @@ git commit -m "fix: e2e validation fixes for unified entry"
 
 1. `docker compose config -q` 全部 6 文件零告警 ✓（Task 10 Step 1）
 2. `docker ps` 仅 nginx 有端口映射 ✓（Task 10 Step 3）
-3. 18 条 stream 端口 `nc` 全通 ✓（Task 10 Step 5）
-4. 18 个子域名站点可访问 ✓（Task 10 Step 6/9）
+3. 26 个宿主端口 `nc` 全通（11 http 监听 + 15 stream）✓（Task 10 Step 5）
+4. 18 个 server 块站点可访问（域名 + 原生端口）✓（Task 10 Step 6/9）
 5. WebSocket / SSE / Keycloak 回调 / Registry push 链路 ✓（Task 10 Step 6-9）
 6. Kafka/Nacos 透明性（原生端口连接）✓（Task 10 Step 5/7）
