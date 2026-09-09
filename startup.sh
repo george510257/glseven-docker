@@ -8,12 +8,17 @@ export DOCKER_VOLUME=${1:-/docker/glseven}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common/compose-list.sh
 source "$SCRIPT_DIR/common/compose-list.sh"
+# shellcheck source=common/preflight.sh
+source "$SCRIPT_DIR/common/preflight.sh"
 cd "$SCRIPT_DIR"
 
 echo "==========================================="
 echo "启动 GLSeven Docker 容器..."
 echo "DOCKER_VOLUME: $DOCKER_VOLUME"
 echo "==========================================="
+
+# 部署前置自愈与预检（幂等）：目录权限 / .env / vm.max_map_count / 孤儿网桥 / ghcr 镜像 / 端口占用
+run_preflight
 
 # chown 仅在 Linux 宿主上有意义；macOS(Docker Desktop) 非 root 无法 chown，降级为警告（VirtioFS 由 VM 侧处理 uid 映射）
 chown_dir() {

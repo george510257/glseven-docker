@@ -41,7 +41,7 @@ services:
       - "3306:3306"    # stream → mysql
       - "6379:6379"    # stream → redis
       - "27017:27017"  # stream → mongo
-      - "5672:5672"    # stream → rabbitmq AMQP
+      - "5673:5672"    # stream → rabbitmq AMQP（宿主 5673：NAS 自带 rabbitmq-server 占用 5672）
       - "1883:1883"    # stream → rabbitmq MQTT
       - "15675:15675"  # stream → rabbitmq MQTT-WS
       - "9092:9092"    # stream → kafka
