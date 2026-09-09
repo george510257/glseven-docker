@@ -144,6 +144,8 @@ proxy_set_header Host              $host;
 proxy_set_header X-Real-IP         $remote_addr;
 proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
 proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host  $host;        # Keycloak KC_PROXY_HEADERS=xforwarded 重建 URL 所需
+proxy_set_header X-Forwarded-Port  $server_port; # $host 不含端口，端口由本头补齐
 proxy_set_header Upgrade           $http_upgrade;
 proxy_set_header Connection        $connection_upgrade;
 proxy_read_timeout  3600s;   # LLM 长流式响应
@@ -181,7 +183,7 @@ server { listen 15675; proxy_pass rabbitmq:15675; }  # MQTT over WebSocket
 
 **`portal/conf/stream-conf.d/kafka.conf`**
 ```nginx
-# stream：Kafka 原生端口透传（advertised.listeners 透明）
+# stream：Kafka 原生端口透传（TCP 层透明；broker advertised 地址为 kafka:9092，宿主客户端需 hosts 条目或仅容器网络内使用）
 server { listen 9092; proxy_pass kafka:9092; }
 ```
 

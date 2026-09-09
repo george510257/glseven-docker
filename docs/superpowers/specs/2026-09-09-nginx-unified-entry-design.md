@@ -158,7 +158,7 @@ nginx 监听端口 = 容器原生端口；多个容器共用同一原生端口�
 | stream `proxy_timeout` | `12h` | 默认 10m 会切断 MySQL/LDAP/Kafka 空闲长连接 |
 | stream `proxy_connect_timeout` | `10s` | 常规 |
 | http `client_max_body_size` | `512m` | 制品库上传、AI 文件上传 |
-| vhost 通用头 | Host、X-Real-IP、X-Forwarded-For、X-Forwarded-Proto | 代理链路正确性 |
+| vhost 通用头 | Host、X-Real-IP、X-Forwarded-For、X-Forwarded-Proto、X-Forwarded-Host、X-Forwarded-Port | 代理链路正确性（Host/Port 供 Keycloak 重建带端口 URL） |
 | WebSocket | `map $http_upgrade $connection_upgrade` + Upgrade/Connection 头 | portainer 控制台、grafana live、open-webui |
 | `proxy_read_timeout` | `3600s` | LLM 长流式响应 |
 | `proxy_buffering off` | vhost 通用 | open-webui SSE 流式输出平滑 |
