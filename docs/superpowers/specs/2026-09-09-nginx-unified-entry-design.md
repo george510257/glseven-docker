@@ -95,6 +95,35 @@
 
 **删除的 14 个 UI 直连端口**：18081、18080、15672、9090、3000、5601、6080、48082、48081、48080、8081、9000、8080、3001。
 
+### 4.3 全量覆盖矩阵（22 个非 nginx 服务）
+
+| 服务 | 代理形态 | 无宿主暴露的内部端口 |
+|---|---|---|
+| mysql | stream 3306 | 33060 (X Protocol，已删) |
+| redis | stream 6379 | — |
+| mongo | stream 27017 | — |
+| mongo-express | 子域名 | — |
+| adminer | 子域名 | — |
+| rabbitmq | stream 5672/1883/15675 + 子域名(15672) | 25672 (节点间) |
+| kafka | stream 9092 | — |
+| **etcd** | **例外：纯内网（既有安全约定）** | 2379/2380 |
+| prometheus | 子域名 | — |
+| grafana | 子域名 | — |
+| elk | 子域名(5601) + stream 9200/5044 | 9300 (ES 节点间) |
+| openldap | stream 389/636 | — |
+| php-ldap-admin | 子域名 | — |
+| keycloak | 子域名 | 9000 (管理端口，仅 Prometheus 抓取) |
+| nacos | stream 8848/9848 + 子域名(控制台) | 7848/9849 (Raft/gRPC 内部) |
+| xxl-job-admin | 子域名 | — |
+| nexus3 | stream 5000 + 子域名(8081) | — |
+| portainer | 子域名 | — |
+| apisix | stream 9080/9180 | 9091 (Prometheus 抓取) |
+| ollama | stream 11434 | — |
+| open-webui | 子域名 | 8081 (内部) |
+| moontv | 子域名 | — |
+
+**etcd 例外理由**：无认证机制（安全边界=glseven 容器网络），消费方仅 APISIX 与 Prometheus（均为容器网内按服务名访问），上一轮设计已明确「勿新增宿主端口映射」；代理暴露无鉴权控制面属纯风险无收益。
+
 ## 5. nginx 配置设计
 
 ### 5.1 文件结构
