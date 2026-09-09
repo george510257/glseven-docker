@@ -23,9 +23,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.3.1
-    ports:
-      - "389:389"
-      - "636:636"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: [ "CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1:389 -b '' -s base -o ldif-wrap=no > /dev/null 2>&1" ]
       interval: 10s
@@ -50,8 +48,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.3.2
-    ports:
-      - "6080:8080"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # 探针工具按 Task 1 验证结果（默认 curl；仅 wget 可用则等价替换）。
       test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://127.0.0.1:8080/ || exit 1" ]
@@ -74,8 +71,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.3.3
-    ports:
-      - "48082:8080"   # Admin Console / 认证端点
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # 镜像内无 curl/wget（Task 1 实测），改用 bash /dev/tcp 对 9000 管理端口做 TCP 存活探测。
       # 9000 管理端口由 KC_HEALTH_ENABLED/KC_METRICS_ENABLED 开启；探针工具按 Task 1 验证结果。

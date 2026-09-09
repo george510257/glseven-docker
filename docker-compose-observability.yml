@@ -21,8 +21,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.2.1
-    ports:
-      - "9090:9090"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
       interval: 10s
@@ -48,8 +47,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.2.2
-    ports:
-      - "3000:3000"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # /api/health 为匿名可访问端点；镜像内有 curl（Task 1 实测）。
       test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:3000/api/health || exit 1" ]
@@ -71,10 +69,7 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.2.3
-    ports:
-      - "5601:5601"
-      - "9200:9200"
-      - "5044:5044"
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # ES 根路径匿名可访问（sebp/elk 默认未启用安全），200 即存活；镜像内有 curl（Task 1 实测）。
       test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:9200/ || exit 1" ]
