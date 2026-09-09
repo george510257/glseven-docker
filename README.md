@@ -1,40 +1,95 @@
 # glseven-docker
 
-开发环境docker服务
+面向开发环境的微服务基础设施 Docker Compose 编排：6 个职能域、23 个服务，统一运行在外部网络 `glseven`（172.18.0.0/16），一键起停、固定 IP、数据落盘宿主目录。
 
-## 使用
+## 快速开始
 
-需 Docker Compose v2+（compose 文件使用顶层 `name:` 字段）。
+前置：Docker Compose v2+（compose 文件使用顶层 `name:` 字段）；GPU 场景要求宿主机 NVIDIA 驱动 ≥550（旧卡 ≥570）。
 
 ```shell
-# 准备环境变量（调整 DOCKER_VOLUME / REDIS_PASSWORD，无 .env 时使用内置默认值）
+# 1. 准备环境变量（.env 提供 DOCKER_VOLUME / REDIS_PASSWORD 等插值，无 .env 时使用内置默认值）
 cp .env.example .env
 
-# 启动：先起基础设施（infra/observability），等待 MySQL 健康后再起依赖服务（security/platform/apps）
+# 2. 启动：BASE 批次 → 等待 MySQL 健康 → DEFERRED 批次 → PORTAL
 bash startup.sh
 
-# 停止：按启动顺序逆序 down 并移除网络
+# 3. 全部 Web UI 入口聚合在导航页
+open http://localhost:8000
+
+# 停止：按启动逆序 down 并移除 glseven 网络
 bash shutdown.sh
 ```
 
-修改 REDIS_PASSWORD 后需同时重建 redis 与 moontv：`bash startup.sh` 重新执行即可。
+数据目录由 startup.sh 的第一个参数指定（默认 `/docker/glseven`）：`bash startup.sh /data/glseven`。Linux 上需 root/sudo 执行（脚本将 nexus3/prometheus/grafana/elk 数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
 
-### 六域编排结构（2026-09-08 重设计）
+修改 `REDIS_PASSWORD` 后需同时重建 redis 与 moontv：重新执行 `bash startup.sh` 即可。
 
-10 个 compose 文件合并为 6 个职能域，统一外部网络 `glseven`（172.18.0.0/16）：
+## 六域结构与启动时序
 
-| 域（compose 文件） | 服务 | IP 段 | 启动批次 |
+| 域（compose 文件） | 服务（容器内固定 IP 末位） | IP 段 | 启动批次 |
 |---|---|---|---|
-| infra | mysql redis mongo mongo-express adminer rabbitmq kafka etcd | 172.18.1.x | BASE |
-| observability | prometheus grafana elk | 172.18.2.x | BASE |
-| security | openldap php-ldap-admin keycloak | 172.18.3.x | DEFERRED |
-| platform | nacos xxl-job-admin nexus3 portainer apisix | 172.18.4.x | DEFERRED |
-| apps | ollama open-webui moontv | 172.18.5.x | DEFERRED |
-| portal | nginx | 172.18.6.x | PORTAL |
+| infra | mysql .1、redis .2、mongo .3、mongo-express .4、adminer .5、rabbitmq .6、kafka .7、etcd .8 | 172.18.1.x | BASE |
+| observability | prometheus .1、grafana .2、elk .3 | 172.18.2.x | BASE |
+| security | openldap .1、php-ldap-admin .2、keycloak .3 | 172.18.3.x | DEFERRED |
+| platform | nacos .1、xxl-job-admin .2、nexus3 .3、portainer .4、apisix .5 | 172.18.4.x | DEFERRED |
+| apps | ollama .1、open-webui .2、moontv .3 | 172.18.5.x | DEFERRED |
+| portal | nginx .1 | 172.18.6.x | PORTAL |
 
-新增服务：etcd（APISIX 配置存储，无对外端口）、APISIX（:9080 数据面 / :9180 Admin API，路由留空由开发自行配置）、Keycloak（:48082 Admin Console，`start-dev` 模式，MySQL 存储）。
+批次时序（`common/compose-list.sh` 是唯一数据源，startup.sh / shutdown.sh 消费）：
 
-服务间互访走服务名（Docker DNS）；外部若硬编码旧 IP，按下表更新。IP 变化会使容器全量重建，数据卷按 `DOCKER_VOLUME` 子目录绑定不受影响：
+- **BASE**：先起数据、消息与监控底座。
+- **MySQL 健康闸门**：startup.sh 等待 mysql healthcheck 通过（超时 120s）。
+- **DEFERRED**：keycloak / nacos / xxl-job-admin 依赖 MySQL 完成初始化。
+- **PORTAL**：最后启动导航门户（保证导航目标先就绪）。
+- 跨 compose project 的依赖不写 `depends_on`（Docker 不支持跨文件引用），由批次时序 + `restart: always` 兜底。
+
+## 服务访问入口
+
+| 服务 | 入口 | 说明 |
+|---|---|---|
+| 导航门户 | http://\<host\>:8000 | 全部 Web UI 入口聚合（nginx 静态页，链接自动指向当前宿主机） |
+| Keycloak | http://\<host\>:48082 | Admin Console / 认证端点 |
+| APISIX | :9080 / :9180 | 网关数据面 / Admin API（X-API-KEY） |
+| Nacos | http://\<host\>:48081 | 控制台（API :8848、gRPC :9848） |
+| XXL-JOB | http://\<host\>:48080/xxl-job-admin/ | 控制台（context-path 保留前缀） |
+| Nexus | http://\<host\>:8081 | Web UI（Docker Registry :5000） |
+| Portainer | http://\<host\>:9000 | 容器管理 |
+| Adminer | http://\<host\>:18080 | MySQL/Mongo 管理 |
+| mongo-express | http://\<host\>:18081 | MongoDB 管理（凭据见 env） |
+| RabbitMQ 管理 | http://\<host\>:15672 | AMQP :35672、MQTT :1883、WebSocket :15675 |
+| Grafana | http://\<host\>:3000 | 可视化（数据源已 provision） |
+| Prometheus | http://\<host\>:9090 | 指标（7 个抓取 job） |
+| Kibana | http://\<host\>:5601 | 日志检索 |
+| phpLDAPadmin | http://\<host\>:6080 | LDAP 管理 |
+| Open WebUI | http://\<host\>:8080 | LLM 对话 |
+| MoonTV | http://\<host\>:3001 | 影视聚合 |
+
+非 HTTP 端口：mysql :3306、redis :6379、mongo :27017、kafka :9092、Elasticsearch :9200、Logstash :5044、openldap :389/:636、ollama :11434。
+仅容器网络内（未对宿主映射）：etcd :2379、keycloak 健康与指标 :9000、apisix prometheus 指标 :9091。
+
+## 配置约定
+
+- **env 分层**：每个服务一个 `common/env/<service>.env`，compose 通过 `env_file` 引用；含默认凭据的文件顶部有 WARNING 注释，生产部署前必须修改。
+- **服务互访走服务名**（Docker DNS），不硬编码 IP；固定 IP 仅用于宿主侧排查与防火墙放行。
+- **监控接入**：`prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。
+
+## 关键服务要点
+
+### Keycloak 26.7.3
+
+- `start-dev` 官方开发模式（免 TLS/hostname 配置），数据全部在 MySQL `keycloak` 库（容器无状态不挂数据卷）。
+- bootstrap admin 凭据见 `common/env/keycloak.env`（仅首次启动生效；WARNING：生产前必须修改）。
+- 健康与指标端口 9000 由 `KC_HEALTH_ENABLED` + `KC_METRICS_ENABLED` 开启（仅容器网络内，供探针与 Prometheus 抓取）。
+
+### APISIX 3.18.0
+
+- 独立网关组件：数据面 :9080 + Admin API :9180，**路由留空**由微服务开发自行配置（无路由时数据面 404 为预期）。
+- 无内置 UI（官方 Dashboard 已退役），管理走 Admin API，`X-API-KEY` 见 `apisix/conf/config.yaml`。
+- 配置存储为 infra 域的 etcd（3.6.14 成熟线）；`allow_admin: 0.0.0.0/0` 由 X-API-KEY 守卫（无/错 key 401），取舍说明见配置文件注释。
+
+## 存量环境迁移（10 域 → 6 域，2026-09-08 重设计）
+
+IP 变化会使容器全量重建；数据卷按 `DOCKER_VOLUME` 子目录绑定不受影响。外部若有硬编码旧 IP，按下表更新：
 
 | 服务 | 旧 IP → 新 IP | | 服务 | 旧 IP → 新 IP |
 |---|---|---|---|---|
@@ -49,7 +104,9 @@ bash shutdown.sh
 | grafana | 172.18.4.2 → 172.18.2.2 | | moontv | 172.18.8.1 → 172.18.5.3 |
 | elk | 172.18.4.3 → 172.18.2.3 | | nginx | 172.18.10.1 → 172.18.6.1 |
 
-#### Keycloak 存量库 SQL（仅存量 MySQL 需手动执行一次；全新初始化由 init.sql 自动完成）
+### Keycloak 存量库 SQL（仅存量 MySQL 需手动执行一次；全新初始化由 init.sql 自动完成）
+
+真实拉起顺序：执行本 SQL → `bash startup.sh`。
 
 ```sql
 create database `keycloak` character set 'utf8mb4' collate 'utf8mb4_unicode_ci';
@@ -58,53 +115,30 @@ grant all privileges on `keycloak`.* to `keycloak`@`%`;
 flush privileges;
 ```
 
-真实拉起顺序：执行本 SQL → `bash startup.sh`。
+### 存量数据卷升级注意（2026-09 全量镜像升级）
 
-#### 新服务兼容性注记
-
-- Keycloak 官方支持矩阵列到 MySQL 8.4+；9.7 未列入矩阵但 JDBC 协议兼容（与 nacos/xxl-job 跑 9.7 同一先例）。
-- etcd 选 3.6.14 成熟线（3.7.1 已发布但仅 2 个月，优先保障 APISIX 互操作稳定）。
-- APISIX 无内置 UI（官方 Dashboard 已退役）；管理走 Admin API :9180（X-API-KEY 见 `apisix/conf/config.yaml`）。
-- Keycloak 默认凭据见 `common/env/keycloak.env`（WARNING：生产部署前必须修改；bootstrap admin 仅首次启动生效）。
-
-### 导航门户
-
-全部 Web UI 的入口聚合在导航页：`http://<宿主机>:8000`（nginx 静态页，链接自动指向当前宿主机）。
-
-### 版本升级（2026-09）
-
-本次将全部镜像升至最新稳定版。**存量数据卷的升级在首次 `bash startup.sh` 拉起时自动完成**（MySQL 9.7 数据字典、Grafana 13 unified storage、Open WebUI DB 迁移、Elasticsearch 9.5 等均为自动且不可逆，拉起前请确认已有备份）。
-
-升级前后注意：
+升级在首次 `bash startup.sh` 拉起时自动完成（MySQL 9.7 数据字典、Grafana 13 unified storage、Open WebUI DB 迁移、Elasticsearch 9.5 等均为自动且**不可逆**，拉起前请确认已有备份）：
 
 1. **RabbitMQ**：升级前在旧容器执行一次 `docker exec rabbitmq rabbitmqctl enable_feature_flag all`（4.3 硬性前置）。
-2. **存量数据库手动 SQL**（init 脚本只对全新初始化生效）：
-   - nacos（库 nacos_devtest）：执行 `mysql/docker-entrypoint-initdb.d/nacos-mysql.sql` 末尾 3 张新表 DDL（pipeline_execution / ai_resource / ai_resource_version）；不执行则 v3.2 新功能不可用，核心功能不受影响。
-   - xxl-job（库 xxl_job）5 条 ALTER + 1 条可选索引清理：
+2. **nacos**（库 nacos_devtest）：init 脚本只对全新初始化生效，存量库需手动执行 `mysql/docker-entrypoint-initdb.d/nacos-mysql.sql` 末尾 3 张新表 DDL（pipeline_execution / ai_resource / ai_resource_version）；不执行则 v3.2 新功能不可用，核心功能不受影响。
+3. **xxl-job**（库 xxl_job）5 条 ALTER + 1 条可选索引清理：
 
-     ```sql
-     create index I_jobgroup on xxl_job_log (job_group);
-     alter table xxl_job_group modify title varchar(64) not null comment '执行器名称';
-     alter table xxl_job_registry modify id bigint(20) NOT NULL AUTO_INCREMENT;
-     alter table xxl_job_info modify executor_param text null comment '任务参数';
-     alter table xxl_job_log modify executor_param text null comment '任务参数';
-     drop index i_jobid_jobgroup on xxl_job_log; -- 可选：3.4.2 已改用单列 I_jobgroup，旧复合索引可清理
-     ```
+   ```sql
+   create index I_jobgroup on xxl_job_log (job_group);
+   alter table xxl_job_group modify title varchar(64) not null comment '执行器名称';
+   alter table xxl_job_registry modify id bigint(20) NOT NULL AUTO_INCREMENT;
+   alter table xxl_job_info modify executor_param text null comment '任务参数';
+   alter table xxl_job_log modify executor_param text null comment '任务参数';
+   drop index i_jobid_jobgroup on xxl_job_log; -- 可选：3.4.2 已改用单列 I_jobgroup，旧复合索引可清理
+   ```
 
-3. **Kafka**（可选）：稳定后执行 `docker exec kafka /opt/kafka/bin/kafka-features.sh --bootstrap-server localhost:9092 upgrade --release-version 4.3` 固化元数据版本；不固化保持兼容模式（可回滚），固化后不可降级。
-4. **Ollama**：要求宿主机 NVIDIA 驱动 ≥550（旧卡 ≥570）。
+4. **Kafka**（可选）：稳定后执行 `docker exec kafka /opt/kafka/bin/kafka-features.sh --bootstrap-server localhost:9092 upgrade --release-version 4.3` 固化元数据版本；不固化保持兼容模式（可回滚），固化后不可降级。
 5. **下线与维持**：libretv 已下线（上游停更，MoonTV 保留）；mongo-express 与 openldap 维持旧版（上游无稳定新版），属技术债。
 6. **XXL-JOB context-path**：本地保留 `/xxl-job-admin` 前缀（application.properties 自定义），执行器侧 `xxl.job.admin.addresses` 需保持带此前缀。
 
-## kafka
+## 已知平台限制（宿主环境，非编排缺陷）
 
-```shell
-# 创建broker建通信用户(或称超级用户)
-./kafka-configs.sh --zookeeper zookeeper-1:2181 --alter --add-config 'SCRAM-SHA-256=[password=admin-secret],SCRAM-SHA-512=[password=admin-secret]' --entity-type users --entity-name admin
-
-# 创建客户端用户 george
-./kafka-configs.sh --zookeeper zookeeper-1:2181 --alter --add-config 'SCRAM-SHA-256=[iterations=8192,password=george-secret],SCRAM-SHA-512=[password=george-secret]' --entity-type users --entity-name george
-
-# 查看SCRAM证书
-./kafka-configs.sh --zookeeper zookeeper-1:2181 --describe --entity-type users --entity-name george
-```
+- **elk**（sebp/elk，amd64-only 镜像）：Apple Silicon macOS 的 Rosetta 模拟层不翻译 seccomp 系统调用，Elasticsearch 9 启动即失败（错误特征 `seccomp unavailable: CONFIG_SECCOMP not compiled into kernel`）；Linux amd64 主机正常。内存受限环境可通过 `ES_JAVA_OPTS` / `LS_JAVA_OPTS` 降低 JVM 堆。
+- **nexus3 Registry :5000**：macOS 上该端口常被 AirPlay Receiver（ControlCenter 进程）占用，需系统设置关闭 AirPlay Receiver 或调整端口映射。
+- **ollama GPU**：`deploy.resources.reservations` 的 nvidia 设备声明仅在具备 NVIDIA 驱动的 Linux 主机生效；macOS Docker Desktop 无 nvidia device driver，容器会创建失败，验证时需临时去掉该段。
+- **open-webui 首启**：需从 HuggingFace 下载 embedding 模型，网络受限环境可用环境变量 `HF_ENDPOINT=https://hf-mirror.com` 指向镜像源。
