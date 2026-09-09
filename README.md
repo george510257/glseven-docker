@@ -10,11 +10,14 @@
 # 1. 准备环境变量（.env 提供 DOCKER_VOLUME / REDIS_PASSWORD 等插值，无 .env 时使用内置默认值）
 cp .env.example .env
 
-# 2. 启动：BASE 批次 → 等待 MySQL 健康 → DEFERRED 批次 → PORTAL
+# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 23 个主机名（二级域名 = 容器名，零别名）
+echo '127.0.0.1 glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local' | sudo tee -a /etc/hosts
+
+# 3. 启动：BASE 批次 → 等待 MySQL 健康 → DEFERRED 批次 → PORTAL
 bash startup.sh
 
-# 3. 全部 Web UI 入口聚合在导航页
-open http://localhost:8000
+# 4. 全部入口聚合在导航页（nginx 为唯一持有宿主端口的容器）
+open http://glseven.local:8000
 
 # 停止：按启动逆序 down 并移除 glseven 网络
 bash shutdown.sh
@@ -45,27 +48,33 @@ bash shutdown.sh
 
 ## 服务访问入口
 
+**nginx（portal）是唯一持有宿主端口的容器**（26 个端口：8000 门户 + 10 个原生 http 监听 + 15 条 stream），其余 22 个服务零宿主端口；二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。
+
 | 服务 | 入口 | 说明 |
 |---|---|---|
-| 导航门户 | http://\<host\>:8000 | 全部 Web UI 入口聚合（nginx 静态页，链接自动指向当前宿主机） |
-| Keycloak | http://\<host\>:48082 | Admin Console / 认证端点 |
-| APISIX | :9080 / :9180 | 网关数据面 / Admin API（X-API-KEY） |
-| Nacos | http://\<host\>:48081 | 控制台（API :8848、gRPC :9848） |
-| XXL-JOB | http://\<host\>:48080/xxl-job-admin/ | 控制台（context-path 保留前缀） |
-| Nexus | http://\<host\>:8081 | Web UI（Docker Registry :5000） |
-| Portainer | http://\<host\>:9000 | 容器管理 |
-| Adminer | http://\<host\>:18080 | MySQL/Mongo 管理 |
-| mongo-express | http://\<host\>:18081 | MongoDB 管理（凭据见 env） |
-| RabbitMQ 管理 | http://\<host\>:15672 | AMQP :35672、MQTT :1883、WebSocket :15675 |
-| Grafana | http://\<host\>:3000 | 可视化（数据源已 provision） |
-| Prometheus | http://\<host\>:9090 | 指标（7 个抓取 job） |
-| Kibana | http://\<host\>:5601 | 日志检索 |
-| phpLDAPadmin | http://\<host\>:6080 | LDAP 管理 |
-| Open WebUI | http://\<host\>:8080 | LLM 对话 |
-| MoonTV | http://\<host\>:3001 | 影视聚合 |
+| 导航门户 | http://glseven.local:8000 | 全部入口聚合（nginx 静态页） |
+| Adminer | http://adminer.glseven.local:8080 | MySQL/Mongo 管理 |
+| mongo-express | http://mongo-express.glseven.local:8081 | MongoDB 管理（凭据见 env） |
+| RabbitMQ 管理 | http://rabbitmq.glseven.local:15672 | AMQP/MQTT 走下方协议端口 |
+| phpLDAPadmin | http://php-ldap-admin.glseven.local:8080 | LDAP 管理 |
+| Keycloak | http://keycloak.glseven.local:8080 | Admin Console / 认证端点 |
+| Nacos | http://nacos.glseven.local:8080 | 控制台（API/gRPC 走下方协议端口） |
+| XXL-JOB | http://xxl-job-admin.glseven.local:8080/xxl-job-admin/ | 控制台（context-path 保留前缀） |
+| Nexus | http://nexus3.glseven.local:8081 | Web UI（Docker Registry 走 localhost:5000） |
+| Portainer | http://portainer.glseven.local:9000 | 容器管理 |
+| APISIX | http://apisix.glseven.local:9080 | 数据面（Admin API 同域名 :9180，X-API-KEY 见 apisix/conf/config.yaml） |
+| Prometheus | http://prometheus.glseven.local:9090 | 指标（7 个抓取 job） |
+| Grafana | http://grafana.glseven.local:3000 | 可视化（数据源已 provision） |
+| Kibana | http://elk.glseven.local:5601 | 日志检索（ES API 同域名 :9200） |
+| etcd | http://etcd.glseven.local:2379 | REST/health/metrics（stream TCP 透传，curl 可用） |
+| Ollama | http://ollama.glseven.local:11434 | API 状态页（stream TCP 透传） |
+| Open WebUI | http://open-webui.glseven.local:8080 | LLM 对话 |
+| MoonTV | http://moontv.glseven.local:3000 | 影视聚合 |
 
-非 HTTP 端口：mysql :3306、redis :6379、mongo :27017、kafka :9092、Elasticsearch :9200、Logstash :5044、openldap :389/:636、ollama :11434。
-仅容器网络内（未对宿主映射）：etcd :2379、keycloak 健康与指标 :9000、apisix prometheus 指标 :9091。
+全部端点统一为「域名 + 容器原生端口」。纯 TCP 协议端口由 nginx stream 透明转发（**端口号 = 原生默认**，也可用域名形式如 `mysql.glseven.local:3306`）：
+mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、MQTT 1883、MQTT-WS 15675、kafka 9092、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
+
+仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380。
 
 ## 配置约定
 
@@ -139,6 +148,6 @@ flush privileges;
 ## 已知平台限制（宿主环境，非编排缺陷）
 
 - **elk**（sebp/elk，amd64-only 镜像）：Apple Silicon macOS 的 Rosetta 模拟层不翻译 seccomp 系统调用，Elasticsearch 9 启动即失败（错误特征 `seccomp unavailable: CONFIG_SECCOMP not compiled into kernel`）；Linux amd64 主机正常。内存受限环境可通过 `ES_JAVA_OPTS` / `LS_JAVA_OPTS` 降低 JVM 堆。
-- **nexus3 Registry :5000**：macOS 上该端口常被 AirPlay Receiver（ControlCenter 进程）占用，需系统设置关闭 AirPlay Receiver 或调整端口映射。
+- **Registry :5000**：端口绑定主体是 nginx（portal），但 macOS 上该端口仍可能被 AirPlay Receiver（ControlCenter 进程）占用导致容器启动报 `port is already allocated`，需在系统设置关闭 AirPlay Receiver（全栈唯一需宿主侧配合的端口）。
 - **ollama GPU**：`deploy.resources.reservations` 的 nvidia 设备声明仅在具备 NVIDIA 驱动的 Linux 主机生效；macOS Docker Desktop 无 nvidia device driver，容器会创建失败，验证时需临时去掉该段。
 - **open-webui 首启**：需从 HuggingFace 下载 embedding 模型，网络受限环境可用环境变量 `HF_ENDPOINT=https://hf-mirror.com` 指向镜像源。
