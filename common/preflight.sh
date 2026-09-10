@@ -134,6 +134,7 @@ check_published_ports() {
     else
       if ! lsof +c0 -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then continue; fi
       # +c0 避免进程名截断（否则 com.docke… 匹配不上）；过滤 docker 自身监听
+      # 边界：-iv docker 为子串放行，进程名含 docker 的无关占用会被误放行（lsof 行内空格进程名经 awk $1 亦有截断风险）——开发环境务实取舍，精确集合匹配留作后续
       occupier=$(lsof +c0 -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print $1}' | sort -u | grep -iv docker | head -1)
       if [ -z "$occupier" ]; then continue; fi
     fi

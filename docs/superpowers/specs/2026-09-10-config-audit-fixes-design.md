@@ -111,11 +111,14 @@ server { listen 8081 default_server; server_name _; return 302 http://glseven.lo
 
 ## 4. 文件级改动清单
 
+> 本节为设计时快照：实施终态与审查校准（如 kafka.conf 注释语义修正、keycloak 探针锚定模式强化）以 `docs/superpowers/plans/2026-09-10-config-audit-fixes.md` 各任务审查注记为准。
+
 | 文件 | 改动 |
 |---|---|
 | `common/env/kafka.env` | listener 三条改写 + EXTERNAL 注释 |
 | `docker-compose-portal.yml` | ports 追加 29092 |
 | `portal/conf/stream-conf.d/kafka.conf` | 追加 29092 透传 + 注释改写 |
+| `portal/conf/nginx.conf` | stream 域计数注释 15 → 16 |
 | `common/preflight.sh` | +`ensure_docker_log_rotation`；`fix_dir_permissions` 补 chmod 600；`pull_registry_images` 按 registry 分派；`check_published_ports` macOS 分支 |
 | `docker-compose-security.yml` | keycloak healthcheck test 改 HTTP 级 |
 | `portal/conf/conf.d/00-default-catchall.conf` | 新增（3 个 default_server） |
