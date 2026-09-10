@@ -9,7 +9,7 @@ services:
   # Portal 172.18.6.x ==================================================================================================
 
   nginx:
-    # 统一入口：http 虚拟主机（监听端口 = 容器原生端口，18 个 server 块）+ stream TCP 透明转发（15 条原生端口）。
+    # 统一入口：http 虚拟主机（监听端口 = 容器原生端口，21 个 server 块，含共享端口 default_server 兜底）+ stream TCP 透明转发（16 条原生端口）。
     # 全栈唯一持有宿主端口的容器；stream 静态上游依赖 portal 最后一批启动（compose-list.sh）。
     image: nginx:1.30.4
     container_name: nginx
@@ -44,7 +44,8 @@ services:
       - "5673:5672"    # stream → rabbitmq AMQP（宿主 5673：NAS 自带 rabbitmq-server 占用 5672）
       - "1883:1883"    # stream → rabbitmq MQTT
       - "15675:15675"  # stream → rabbitmq MQTT-WS
-      - "9092:9092"    # stream → kafka
+      - "9092:9092"    # stream → kafka PLAINTEXT（容器网内，advertised 裸名）
+      - "29092:29092"  # stream → kafka EXTERNAL（宿主/局域网客户端入口，advertised 见 common/env/kafka.env）
       - "2379:2379"    # stream → etcd（HTTP REST/gRPC 透传）
       - "389:389"      # stream → openldap
       - "636:636"      # stream → openldap LDAPS
