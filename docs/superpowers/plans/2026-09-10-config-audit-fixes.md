@@ -703,6 +703,12 @@ git commit -m "docs(readme): 端口 27；Kafka 双 listener 接入与 hosts work
 
 **Files:** 无代码改动（验证任务；发现问题回改对应 Task 并重跑）。
 
+> **Task 3 质量审查移交的回改项（进入 Step 1 前先落地，各自独立提交）：**
+> 1.（Important）`common/preflight.sh` `ensure_docker_log_rotation` 的 daemon.json 写入改原子：先写 `"$daemon_conf.tmp"`，成功后 `mv` 原子覆盖，失败分支补 `rm -f "$daemon_conf.tmp"`——避免写一半失败留下截断/空 daemon.json 导致 dockerd 起不来（preflight.sh:163-164，计划 Step 8 继承的设计缺口）。commit：`fix(preflight): daemon.json 原子写入（tmp+mv，失败清理临时文件）`。
+> 2.（Minor）`startup.sh:20` 注释的步骤清单同步七步版（…/ 孤儿网桥 / registry 镜像 / 端口占用 / 日志轮转）。commit：`docs(startup): 注释步骤清单同步 preflight 七步版`。
+> 3.（可选加测）mock 负向用例（全部代理失败→直连失败→exit 1）与 macOS lsof 冲突/放行双分支用例——质量审查已人工补测通过，入库与否均可。
+> （审查另列三个既有行为 Minor——ss 非 root 前提、端口提取正则形态约束、mirror 命名镜像残留本地——非本次引入，不回改，仅记录。）
+
 - [ ] **Step 1: 全栈拉起（preflight 全流程首次实跑）**
 
 ```bash
