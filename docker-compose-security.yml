@@ -73,9 +73,11 @@ services:
         ipv4_address: 172.18.3.3
     # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
-      # 镜像内无 curl/wget（Task 1 实测），改用 bash /dev/tcp 对 9000 管理端口做 TCP 存活探测。
-      # 9000 管理端口由 KC_HEALTH_ENABLED/KC_METRICS_ENABLED 开启；探针工具按 Task 1 验证结果。
-      test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9000' || exit 1" ]
+      # 镜像内无 curl/wget，用 bash /dev/tcp 对 9000 管理端口发 HTTP 请求探测 /health/ready
+      # （端口监听 ≠ 就绪；顶层 status UP 判定即既往验证标准）。9000 由 KC_HEALTH_ENABLED/KC_METRICS_ENABLED 开启。
+      # grep 锚定顶层键（^ + 恰 4 空格缩进，Task 1 实测顶层 4 空格/子 check 12 空格），
+      # 避免命中子 check 的 "status": "UP" 行——顶层 DOWN 而子 check UP 时非锚定模式会假阳性（审查已复现）。
+      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '^    \"status\"[[:space:]]*:[[:space:]]*\"UP\"' <&3" ]
       interval: 10s
       timeout: 5s
       retries: 10
