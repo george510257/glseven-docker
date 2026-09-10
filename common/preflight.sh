@@ -161,8 +161,14 @@ ensure_docker_log_rotation() {
   echo "Preflight 7/7: writing default log rotation to $daemon_conf ..."
   mkdir -p /etc/docker 2>/dev/null || { echo "WARN: cannot create /etc/docker, skipping log rotation setup"; return 0; }
   if ! printf '{\n  "log-driver": "json-file",\n  "log-opts": { "max-size": "%s", "max-file": "%s" }\n}\n' \
-       "$PREFLIGHT_LOG_MAX_SIZE" "$PREFLIGHT_LOG_MAX_FILE" > "$daemon_conf" 2>/dev/null; then
+       "$PREFLIGHT_LOG_MAX_SIZE" "$PREFLIGHT_LOG_MAX_FILE" > "$daemon_conf.tmp" 2>/dev/null; then
+    rm -f "$daemon_conf.tmp"
     echo "WARN: failed to write $daemon_conf (need root?), skipping"
+    return 0
+  fi
+  if ! mv "$daemon_conf.tmp" "$daemon_conf" 2>/dev/null; then
+    rm -f "$daemon_conf.tmp"
+    echo "WARN: failed to install $daemon_conf (mv failed), skipping"
     return 0
   fi
   echo "Log rotation written; reloading docker (applies to containers created afterwards)..."
