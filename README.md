@@ -74,7 +74,7 @@ bash shutdown.sh
 全部端点统一为「域名 + 容器原生端口」。纯 TCP 协议端口由 nginx stream 透明转发（**端口号 = 原生默认**，也可用域名形式如 `mysql.glseven.local:3306`）：
 mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、MQTT 1883、MQTT-WS 15675、kafka 29092（宿主/局域网客户端入口，双 listener 见下方「Kafka 双 listener」）、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
 
-仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380、kafka PLAINTEXT 9092（advertised 裸名 `kafka:9092`，宿主直连无意义，Kafka 客户端一律走 29092）。
+仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380。kafka PLAINTEXT 9092 虽经 stream 透传宿主，但 advertised 裸名 `kafka:9092` 宿主不可解析，协议层对宿主不可用，Kafka 客户端一律走 29092（见下方「Kafka 双 listener」）。
 
 ## 配置约定
 
@@ -85,7 +85,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、
 ## 容器日志轮转与 etcd 风险边界
 
 - **日志轮转**（Linux 宿主）：preflight 第 7 步幂等写入 `/etc/docker/daemon.json`（`json-file`、max-size 50m、max-file 3；仅当文件不存在时写入，已存在但缺 `log-driver`/`log-opts` 时打印手工合并提示）。daemon 级配置对宿主上全部容器生效，且仅影响之后新建的容器（存量容器需重建才应用）。macOS Docker Desktop 在 Settings → Docker Engine 手工加同样的键。
-- **etcd 无认证风险**：etcd 默认无认证且 2379 已透传宿主——宿主上任何进程可读写并改写 APISIX 路由。这是开发环境全量代理的明示决策（见规格 2026-09-09 §4.3）；不要在生产网络复用本编排的 etcd 暴露方式。
+- **etcd 无认证风险**：etcd 默认无认证且 2379 已透传宿主——宿主上任何进程可读写并改写 APISIX 路由。这是开发环境全量代理的明示决策（见 `docs/superpowers/specs/2026-09-09-nginx-unified-entry-design.md` §4.3）；不要在生产网络复用本编排的 etcd 暴露方式。
 
 ## 关键服务要点
 
@@ -103,9 +103,10 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、
 
 ### Kafka 双 listener（4.3.1）
 
-- 容器网内：`PLAINTEXT://kafka:9092`（advertised 裸名），微服务客户端 bootstrap 地址写 `kafka:9092`。
+- 容器网络内：`PLAINTEXT://kafka:9092`（advertised 裸名），微服务客户端 bootstrap 地址写 `kafka:9092`。
 - 宿主/局域网：`EXTERNAL://:29092`，经 nginx stream 透传；advertised 地址在 `common/env/kafka.env`（默认 `127.0.0.1:29092`，本机 Docker Desktop 客户端直接用 `localhost:29092`）。
 - NAS 局域网其他机器接入：把 `common/env/kafka.env` 中 EXTERNAL advertised 的 `127.0.0.1` 改成 NAS IP，然后 `docker compose -f docker-compose-infra.yml up -d kafka` 重建。
+- 9092 的 nginx stream 透传为存量兼容保留：旧 hosts 接入路径仍可用（PLAINTEXT advertised 仍为裸名），容器网络内客户端直连 `kafka:9092`（Docker DNS，不经 nginx）——但新接入一律走 29092，hosts 路径勿再新增依赖。
 - 旧「hosts 条目 `127.0.0.1 kafka`」workaround 已废弃，勿再使用。
 
 ## 存量环境迁移（10 域 → 6 域，2026-09-08 重设计）
