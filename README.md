@@ -48,7 +48,7 @@ bash shutdown.sh
 
 ## 服务访问入口
 
-**nginx（portal）是唯一持有宿主端口的容器**（26 个端口：8000 门户 + 10 个原生 http 监听 + 15 条 stream），其余 22 个服务零宿主端口；二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。
+**nginx（portal）是唯一持有宿主端口的容器**（27 个端口：8000 门户 + 10 个原生 http 监听 + 16 条 stream），其余 22 个服务零宿主端口；二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户。
 
 | 服务 | 入口 | 说明 |
 |---|---|---|
@@ -72,15 +72,20 @@ bash shutdown.sh
 | MoonTV | http://moontv.glseven.local:3000 | 影视聚合 |
 
 全部端点统一为「域名 + 容器原生端口」。纯 TCP 协议端口由 nginx stream 透明转发（**端口号 = 原生默认**，也可用域名形式如 `mysql.glseven.local:3306`）：
-mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、MQTT 1883、MQTT-WS 15675、kafka 9092（宿主 Kafka 客户端需另加 hosts 条目 `127.0.0.1 kafka`——引导后元数据指向裸名 `kafka:9092`；或仅在容器网络内使用）、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
+mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、MQTT 1883、MQTT-WS 15675、kafka 29092（宿主/局域网客户端入口，双 listener 见下方「Kafka 双 listener」）、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
 
-仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380。
+仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380、kafka PLAINTEXT 9092（advertised 裸名 `kafka:9092`，宿主直连无意义，Kafka 客户端一律走 29092）。
 
 ## 配置约定
 
 - **env 分层**：每个服务一个 `common/env/<service>.env`，compose 通过 `env_file` 引用；含默认凭据的文件顶部有 WARNING 注释，生产部署前必须修改。
 - **服务互访走服务名**（Docker DNS），不硬编码 IP；固定 IP 仅用于宿主侧排查与防火墙放行。
 - **监控接入**：`prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。
+
+## 容器日志轮转与 etcd 风险边界
+
+- **日志轮转**（Linux 宿主）：preflight 第 7 步幂等写入 `/etc/docker/daemon.json`（`json-file`、max-size 50m、max-file 3；仅当文件不存在时写入，已存在但缺 `log-driver`/`log-opts` 时打印手工合并提示）。daemon 级配置对宿主上全部容器生效，且仅影响之后新建的容器（存量容器需重建才应用）。macOS Docker Desktop 在 Settings → Docker Engine 手工加同样的键。
+- **etcd 无认证风险**：etcd 默认无认证且 2379 已透传宿主——宿主上任何进程可读写并改写 APISIX 路由。这是开发环境全量代理的明示决策（见规格 2026-09-09 §4.3）；不要在生产网络复用本编排的 etcd 暴露方式。
 
 ## 关键服务要点
 
@@ -95,6 +100,13 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、
 - 独立网关组件：数据面 :9080 + Admin API :9180，**路由留空**由微服务开发自行配置（无路由时数据面 404 为预期）。
 - 无内置 UI（官方 Dashboard 已退役），管理走 Admin API，`X-API-KEY` 见 `apisix/conf/config.yaml`。
 - 配置存储为 infra 域的 etcd（3.6.14 成熟线）；`allow_admin: 0.0.0.0/0` 由 X-API-KEY 守卫（无/错 key 401），取舍说明见配置文件注释。
+
+### Kafka 双 listener（4.3.1）
+
+- 容器网内：`PLAINTEXT://kafka:9092`（advertised 裸名），微服务客户端 bootstrap 地址写 `kafka:9092`。
+- 宿主/局域网：`EXTERNAL://:29092`，经 nginx stream 透传；advertised 地址在 `common/env/kafka.env`（默认 `127.0.0.1:29092`，本机 Docker Desktop 客户端直接用 `localhost:29092`）。
+- NAS 局域网其他机器接入：把 `common/env/kafka.env` 中 EXTERNAL advertised 的 `127.0.0.1` 改成 NAS IP，然后 `docker compose -f docker-compose-infra.yml up -d kafka` 重建。
+- 旧「hosts 条目 `127.0.0.1 kafka`」workaround 已废弃，勿再使用。
 
 ## 存量环境迁移（10 域 → 6 域，2026-09-08 重设计）
 
