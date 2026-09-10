@@ -499,7 +499,7 @@ git commit -m "feat(preflight): .env 600 收紧；双 registry 镜像代理（gh
 ### Task 4: Keycloak 探针升级 HTTP 级（P2-4）
 
 **Files:**
-- Modify: `docker-compose-security.yml:75-78`（keycloak healthcheck）
+- Modify: `docker-compose-security.yml:75-80`（keycloak healthcheck；实际变更落点 75-80，注释扩为 4 行）
 
 - [ ] **Step 1: 按任务 1 结论替换 healthcheck**
 
@@ -520,10 +520,12 @@ git commit -m "feat(preflight): .env 600 收紧；双 registry 镜像代理（gh
       # （端口监听 ≠ 就绪；顶层 status UP 判定即既往验证标准）。9000 由 KC_HEALTH_ENABLED/KC_METRICS_ENABLED 开启。
       # grep 锚定顶层键（^ + 恰 4 空格缩进，Task 1 实测顶层 4 空格/子 check 12 空格），
       # 避免命中子 check 的 "status": "UP" 行——顶层 DOWN 而子 check UP 时非锚定模式会假阳性（审查已复现）。
-      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '^    \\"status\\"[[:space:]]*:[[:space:]]*\\"UP\\"' <&3" ]
+      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '^    \"status\"[[:space:]]*:[[:space:]]*\"UP\"' <&3" ]
 ```
 
 （仅当 Task 1 结论 B 时改用：`test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && while read -t 5 -u 3 line; do case "$line" in '    "status"'*'"UP"'*) exit 0;; esac; done; exit 1" ]`——case 模式同样须锚定顶层键：模式以 4 个空格 + `"status"` 开头（顶层行形态），子 check 行以 12 空格开头不会命中；按 Task 1 记录的真实 JSON 格式校准。）
+
+> **2026-09-10 实现注记（Task 4 质量审查）**：上块 test 行的 grep 模式草案存在过量转义（引号前双反斜杠，YAML 双引号标量解析后 shell 层残留反斜杠+引号，GNU grep 恰按字面引号处理，属未定义转义依赖）；实现按本节说明文字（shell 层 ^ 后恰 4 空格 + 纯净引号锚定）采用 YAML 标准转义（引号前单反斜杠），以渲染断言（config --format json 语义）与活体探针（正向 exit 0 / 负向 exit 1 / 合成顶层 DOWN+子 check UP 不假阳性）双重验证为准。
 
 - [ ] **Step 2: 渲染验证探针字符串**
 
