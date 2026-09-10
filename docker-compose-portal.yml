@@ -44,7 +44,7 @@ services:
       - "5673:5672"    # stream → rabbitmq AMQP（宿主 5673：NAS 自带 rabbitmq-server 占用 5672）
       - "1883:1883"    # stream → rabbitmq MQTT
       - "15675:15675"  # stream → rabbitmq MQTT-WS
-      - "9092:9092"    # stream → kafka PLAINTEXT（容器网内，advertised 裸名）
+      - "9092:9092"    # stream → kafka PLAINTEXT（存量兼容透传：宿主旧 hosts 路径；容器网络内直连不经 nginx）
       - "29092:29092"  # stream → kafka EXTERNAL（宿主/局域网客户端入口，advertised 见 common/env/kafka.env）
       - "2379:2379"    # stream → etcd（HTTP REST/gRPC 透传）
       - "389:389"      # stream → openldap
