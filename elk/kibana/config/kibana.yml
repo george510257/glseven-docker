@@ -1,5 +1,5 @@
 # Kibana v9 configuration
-# Reference: https://www.elastic.co/guide/en/kibana/9.3/settings.html
+# Reference: https://www.elastic.co/guide/en/kibana/9.5/settings.html
 
 # The port to bind the Kibana server to.
 #server.port: 5601
