@@ -61,7 +61,7 @@ docker exec kc-probe bash -c 'which grep && grep --version 2>/dev/null | head -1
 docker exec kc-probe bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000; printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3; cat <&3' | head -20
 ```
 
-Expected: 第一条输出 grep 路径（如 `/usr/bin/grep`）；第二条输出 `HTTP/1.1 200 OK` 头 + JSON 体，记录 body 中 status 键的确切格式（预期 `{"status":"UP",...}` 紧凑无空格）。
+Expected: 第一条输出 grep 路径（如 `/usr/bin/grep`）；第二条输出 `HTTP/1.1 200 OK` 头 + JSON 体，记录 body 中 status 键的确切格式（预期 `{"status":"UP",...}` 紧凑无空格）。（实测推翻：HTTP/1.0 回显 + 4 空格缩进 pretty JSON，见下方记录）
 
 > **2026-09-10 实测记录（keycloak/keycloak:26.7.3，start-dev，管理端口 9000）**：
 > - 服务端原样回显 `HTTP/1.0 200 OK`（请求用 HTTP/1.0，服务端按请求版本回显，非 `HTTP/1.1`）；
@@ -95,9 +95,9 @@ Expected: 第一条输出 grep 路径（如 `/usr/bin/grep`）；第二条输出
 > }
 > ```
 >
-> Task 4 校准 grep 模式以本记录为准：模式必须兼容 `"status": "UP"`（冒号后带空格）的多行 pretty JSON；计划中的 grep 模式含 `[[:space:]]*`，已覆盖该格式。
+> Task 4 校准 grep 模式以本记录为准：模式必须兼容 `"status": "UP"`（冒号后带空格）的多行 pretty JSON。**局限（代码审查复现）**：非锚定模式 `grep -q '"status"...'` 会命中子 check 行——当顶层 status 为 DOWN 而任一子 check 为 UP 时探针假阳性。故 Task 4 必须用顶层键锚定模式（顶层键 4 空格缩进，子 check 12 空格）：`grep -q '^    "status"[[:space:]]*:[[:space:]]*"UP"'`。
 
-- [ ] **Step 4: 原样试跑完整探针命令（grep 变体）**（结论 A：grep 变体可用——原样命令输出 `PROBE_OK`、exit 0；负向探测未监听端口 9001 时正确 exit 1，探针可信。结论 B 不适用）
+- [ ] **Step 4: 原样试跑完整探针命令（grep 变体）**（结论 A：grep 变体可用——原样命令输出 `PROBE_OK`、exit 0；负向探测未监听端口 9001 时正确 exit 1（仅覆盖连接失败分支；status 非 UP 分支的假阳性由 Task 4 锚定模式消除）。结论 B 不适用）
 
 ```bash
 docker exec kc-probe bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3 && grep -q "\"status\"[[:space:]]*:[[:space:]]*\"UP\"" <&3 && echo PROBE_OK'
@@ -512,16 +512,18 @@ git commit -m "feat(preflight): .env 600 收紧；双 registry 镜像代理（gh
       test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9000' || exit 1" ]
 ```
 
-改为（结论 A：grep 存在；`\\r\\n` 为 YAML 双引号转义，到 shell 是字面 `\r\n`，由 printf 解释成 CRLF）：
+改为（结论 A：grep 存在；`\\r\\n` 为 YAML 双引号转义，到 shell 是字面 `\r\n`，由 printf 解释成 CRLF；grep 模式用 `^    "status"` 锚定顶层键——Task 1 实测顶层 status 键 4 空格缩进、子 check 12 空格，非锚定模式在顶层 DOWN 而子 check UP 时会假阳性，代码审查已复现）：
 
 ```yaml
     healthcheck:
       # 镜像内无 curl/wget，用 bash /dev/tcp 对 9000 管理端口发 HTTP 请求探测 /health/ready
-      # （端口监听 ≠ 就绪；UP 判定即既往验证标准）。9000 由 KC_HEALTH_ENABLED/KC_METRICS_ENABLED 开启。
-      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"status\"[[:space:]]*:[[:space:]]*\"UP\"' <&3" ]
+      # （端口监听 ≠ 就绪；顶层 status UP 判定即既往验证标准）。9000 由 KC_HEALTH_ENABLED/KC_METRICS_ENABLED 开启。
+      # grep 锚定顶层键（^ + 恰 4 空格缩进，Task 1 实测顶层 4 空格/子 check 12 空格），
+      # 避免命中子 check 的 "status": "UP" 行——顶层 DOWN 而子 check UP 时非锚定模式会假阳性（审查已复现）。
+      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '^    \\"status\\"[[:space:]]*:[[:space:]]*\\"UP\\"' <&3" ]
 ```
 
-（仅当 Task 1 结论 B 时改用：`test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && while read -t 5 -u 3 line; do case \"$line\" in *'\"status\"'*'\"UP\"'*) exit 0;; esac; done; exit 1" ]`，并按 Task 1 记录的真实 JSON 格式校准 case 模式。）
+（仅当 Task 1 结论 B 时改用：`test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && while read -t 5 -u 3 line; do case "$line" in '    "status"'*'"UP"'*) exit 0;; esac; done; exit 1" ]`——case 模式同样须锚定顶层键：模式以 4 个空格 + `"status"` 开头（顶层行形态），子 check 行以 12 空格开头不会命中；按 Task 1 记录的真实 JSON 格式校准。）
 
 - [ ] **Step 2: 渲染验证探针字符串**
 
@@ -529,7 +531,7 @@ git commit -m "feat(preflight): .env 600 收紧；双 registry 镜像代理（gh
 docker compose -f docker-compose-security.yml config | grep -A2 "test:"
 ```
 
-Expected: 渲染出的 test 字符串含字面 `GET /health/ready HTTP/1.0\r\n\r\n`（printf 参数内为字面反斜杠序列）与 `"status"[[:space:]]*:[[:space:]]*"UP"`，且无 compose 插值告警。
+Expected: 渲染出的 test 字符串含字面 `GET /health/ready HTTP/1.0\r\n\r\n`（printf 参数内为字面反斜杠序列）与锚定模式 `^    \"status\"[[:space:]]*:[[:space:]]*\"UP\"`（^ 后恰 4 个空格），且无 compose 插值告警。
 
 - [ ] **Step 3: Commit**
 
