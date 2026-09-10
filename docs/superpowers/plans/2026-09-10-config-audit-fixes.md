@@ -657,7 +657,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、
 改为：
 
 ```markdown
-仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380、kafka PLAINTEXT 9092（advertised 裸名 `kafka:9092`，宿主直连无意义，Kafka 客户端一律走 29092）。
+仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380。kafka PLAINTEXT 9092 虽经 stream 透传宿主，但 advertised 裸名 `kafka:9092` 宿主不可解析，协议层对宿主不可用，Kafka 客户端一律走 29092（见下方「Kafka 双 listener」）。
 ```
 
 - [ ] **Step 4: 「关键服务要点」APISIX 小节后新增 Kafka 小节**
@@ -667,9 +667,10 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、
 ```markdown
 ### Kafka 双 listener（4.3.1）
 
-- 容器网内：`PLAINTEXT://kafka:9092`（advertised 裸名），微服务客户端 bootstrap 地址写 `kafka:9092`。
+- 容器网络内：`PLAINTEXT://kafka:9092`（advertised 裸名），微服务客户端 bootstrap 地址写 `kafka:9092`。
 - 宿主/局域网：`EXTERNAL://:29092`，经 nginx stream 透传；advertised 地址在 `common/env/kafka.env`（默认 `127.0.0.1:29092`，本机 Docker Desktop 客户端直接用 `localhost:29092`）。
 - NAS 局域网其他机器接入：把 `common/env/kafka.env` 中 EXTERNAL advertised 的 `127.0.0.1` 改成 NAS IP，然后 `docker compose -f docker-compose-infra.yml up -d kafka` 重建。
+- 9092 的 nginx stream 透传为存量兼容保留：旧 hosts 接入路径仍可用（PLAINTEXT advertised 仍为裸名），容器网络内客户端直连 `kafka:9092`（Docker DNS，不经 nginx）——但新接入一律走 29092，hosts 路径勿再新增依赖。
 - 旧「hosts 条目 `127.0.0.1 kafka`」workaround 已废弃，勿再使用。
 ```
 
@@ -681,7 +682,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、
 ## 容器日志轮转与 etcd 风险边界
 
 - **日志轮转**（Linux 宿主）：preflight 第 7 步幂等写入 `/etc/docker/daemon.json`（`json-file`、max-size 50m、max-file 3；仅当文件不存在时写入，已存在但缺 `log-driver`/`log-opts` 时打印手工合并提示）。daemon 级配置对宿主上全部容器生效，且仅影响之后新建的容器（存量容器需重建才应用）。macOS Docker Desktop 在 Settings → Docker Engine 手工加同样的键。
-- **etcd 无认证风险**：etcd 默认无认证且 2379 已透传宿主——宿主上任何进程可读写并改写 APISIX 路由。这是开发环境全量代理的明示决策（见规格 2026-09-09 §4.3）；不要在生产网络复用本编排的 etcd 暴露方式。
+- **etcd 无认证风险**：etcd 默认无认证且 2379 已透传宿主——宿主上任何进程可读写并改写 APISIX 路由。这是开发环境全量代理的明示决策（见 `docs/superpowers/specs/2026-09-09-nginx-unified-entry-design.md` §4.3）；不要在生产网络复用本编排的 etcd 暴露方式。
 ```
 
 - [ ] **Step 6: 一致性核对**
@@ -699,6 +700,8 @@ git add README.md
 git commit -m "docs(readme): 端口 27；Kafka 双 listener 接入与 hosts workaround 废弃；日志轮转；etcd 风险标注"
 ```
 
+> **2026-09-10 修正注记（Task 7 质量审查，With fixes → 已修）**：Step 3/4/5 的「改为」块按审查修正——9092 实为 16 条 stream 之一（kafka.conf:3 + portal.yml 发布 9092），原「仅容器网络内（未代理）」归类失实，移出该清单并改述为「经 stream 透传但协议层对宿主不可用」；Kafka 小节统一「容器网络内」术语并补 9092 存量兼容保留说明；etcd 规格引用路径化。Step 6 不变量不变（旧三类表述 0 命中、`127.0.0.1 kafka` 恰 1 命中=废弃声明行、29092 ≥3）。配置侧（kafka.conf/portal.yml）注释修正移交 Task 8 回改项 4。
+
 ---
 
 ### Task 8: 全栈端到端验证与幂等回归
@@ -709,6 +712,7 @@ git commit -m "docs(readme): 端口 27；Kafka 双 listener 接入与 hosts work
 > 1.（Important）`common/preflight.sh` `ensure_docker_log_rotation` 的 daemon.json 写入改原子：先写 `"$daemon_conf.tmp"`，成功后 `mv` 原子覆盖，失败分支补 `rm -f "$daemon_conf.tmp"`——避免写一半失败留下截断/空 daemon.json 导致 dockerd 起不来（preflight.sh:163-164，计划 Step 8 继承的设计缺口）。commit：`fix(preflight): daemon.json 原子写入（tmp+mv，失败清理临时文件）`。
 > 2.（Minor）`startup.sh:20` 注释的步骤清单同步七步版（…/ 孤儿网桥 / registry 镜像 / 端口占用 / 日志轮转）。commit：`docs(startup): 注释步骤清单同步 preflight 七步版`。
 > 3.（可选加测）mock 负向用例（全部代理失败→直连失败→exit 1）与 macOS lsof 冲突/放行双分支用例——质量审查已人工补测通过，入库与否均可。
+> 4.（Important，Task 7 质量审查）9092 透传注释修正：`portal/conf/stream-conf.d/kafka.conf` 头注释与 `docker-compose-portal.yml` 9092 行注释的「供容器网内」表述失实（nginx stream 9092 的实际服务面是宿主侧旧 hosts 路径；容器网络内客户端直连 kafka:9092 走 Docker DNS 不经 nginx）——改为「存量兼容透传：宿主旧 hosts 接入路径；容器网络内客户端直连 kafka:9092 不经 nginx」。commit：`docs(portal): 修正 kafka 9092 透传注释（存量兼容路径，容器网络内直连不经 nginx）`。
 > （审查另列三个既有行为 Minor——ss 非 root 前提、端口提取正则形态约束、mirror 命名镜像残留本地——非本次引入，不回改，仅记录。）
 
 - [ ] **Step 1: 全栈拉起（preflight 全流程首次实跑）**
