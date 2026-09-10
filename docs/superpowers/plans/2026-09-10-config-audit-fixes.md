@@ -54,7 +54,7 @@ done
 
 Expected: `READY after Nx5s`（N ≤ 24）。超时则查 `docker logs kc-probe`，不得继续后续步骤。
 
-- [ ] **Step 3: 验证 grep 存在性与 /health/ready 响应格式**
+- [ ] **Step 3: 验证 grep 存在性与 /health/ready 响应格式**（2026-09-10 实测：镜像内无 `which` 命令——原样命令 exit 127，改用 `command -v grep` 验证：grep 存在于 `/usr/bin/grep`（GNU grep 3.6），结论 B 不适用；body 实测格式见下方记录）
 
 ```bash
 docker exec kc-probe bash -c 'which grep && grep --version 2>/dev/null | head -1'
@@ -63,7 +63,41 @@ docker exec kc-probe bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000; printf "GET /heal
 
 Expected: 第一条输出 grep 路径（如 `/usr/bin/grep`）；第二条输出 `HTTP/1.1 200 OK` 头 + JSON 体，记录 body 中 status 键的确切格式（预期 `{"status":"UP",...}` 紧凑无空格）。
 
-- [ ] **Step 4: 原样试跑完整探针命令（grep 变体）**
+> **2026-09-10 实测记录（keycloak/keycloak:26.7.3，start-dev，管理端口 9000）**：
+> - 服务端原样回显 `HTTP/1.0 200 OK`（请求用 HTTP/1.0，服务端按请求版本回显，非 `HTTP/1.1`）；
+> - **body 并非紧凑 JSON，而是 4 空格缩进多行 pretty JSON**；headers 为 CRLF，body 行尾为 LF；
+> - status 键确切格式：`"status": "UP"`（冒号后 1 个空格，顶层键带 4 空格缩进）。
+>
+> 完整实测响应（`cat <&3` 原样输出）：
+>
+> ```
+> HTTP/1.0 200 OK
+> content-type: application/json; charset=UTF-8
+> cache-control: no-store
+> content-length: 345
+>
+> {
+>     "status": "UP",
+>     "checks": [
+>         {
+>             "name": "Graceful Shutdown",
+>             "status": "UP"
+>         },
+>         {
+>             "name": "Keycloak database connections async health check",
+>             "status": "UP"
+>         },
+>         {
+>             "name": "Keycloak Initialized",
+>             "status": "UP"
+>         }
+>     ]
+> }
+> ```
+>
+> Task 4 校准 grep 模式以本记录为准：模式必须兼容 `"status": "UP"`（冒号后带空格）的多行 pretty JSON；计划中的 grep 模式含 `[[:space:]]*`，已覆盖该格式。
+
+- [ ] **Step 4: 原样试跑完整探针命令（grep 变体）**（结论 A：grep 变体可用——原样命令输出 `PROBE_OK`、exit 0；负向探测未监听端口 9001 时正确 exit 1，探针可信。结论 B 不适用）
 
 ```bash
 docker exec kc-probe bash -c 'exec 3<>/dev/tcp/127.0.0.1/9000 && printf "GET /health/ready HTTP/1.0\r\n\r\n" >&3 && grep -q "\"status\"[[:space:]]*:[[:space:]]*\"UP\"" <&3 && echo PROBE_OK'
@@ -85,7 +119,7 @@ docker rm -f kc-probe
 
 Expected: 输出 kc-probe。
 
-- [ ] **Step 6: 实测 quay 镜像代理（Task 3 的 quay 行依据）**
+- [ ] **Step 6: 实测 quay 镜像代理（Task 3 的 quay 行依据）**（结论 C：quay.m.daocloud.io 拉取成功——`Status: Downloaded newer image`，Digest `sha256:dfd3941bf6ced5fdb700f9b2d98b22b7bca7ceee13aec16224f93ff30d9a59c4`，耗时约 1.5s，无需重试；结论 D 不适用，Task 3 保留 `"quay.io quay.m.daocloud.io"` 行）
 
 ```bash
 docker pull quay.m.daocloud.io/coreos/etcd:v3.6.14
