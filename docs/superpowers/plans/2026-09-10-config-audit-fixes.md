@@ -795,6 +795,12 @@ Expected: shutdown 逆序全停 + 网络移除；startup 再次全过；`23`；`
 
 向用户汇报：8 项验证结果、平台差异备注（macOS daemon.json 走 GUI、Linux/NAS 生效路径）、遗留观察项（如有）。若 Step 1-8 触发了任何回改，回改后重跑对应步骤并补提交。
 
+> **2026-09-10 验证发现（Task 8 规格审查 + 活体补证）：**
+> 1.（存量缺陷，非本次范围，未在本分支实施）kafka 数据不持久：`apache/kafka:4.3.1` KRaft 默认 `log.dirs=/tmp/kafka-logs`，仓库虽挂载 `${DOCKER_VOLUME}/kafka/data → /var/lib/kafka/data` 但未设 `KAFKA_LOG_DIRS`——数据实际写在容器可写层，`down` 周期即全丢（活体 `kafka-log-dirs.sh` 实证 `logDir=/tmp/kafka-logs` + 挂载点空 + drain 0 条旧消息）。修复方向：`kafka.env` 加 `KAFKA_LOG_DIRS=/var/lib/kafka/data` 并固定 `KAFKA_CLUSTER_ID`（否则重建后随机 ID 与已 format 存储不匹配）；另评 shutdown.sh infra 批次 `stop`/`-t 60`。属独立后续任务。
+> 2.（环境约束，与 6 项修复无因果——`git diff 5362eca..HEAD -- '*nexus*'` 为空）elk OOMKilled 循环（`-Xmx3968m + AlwaysPreTouch` ≈6G vs Docker Desktop VM 7.75GiB）与 nexus3 被内存压力挤出循环（RestartCount 39/40 快照值）。NAS 部署按实际内存复验；macOS 长跑需调大 VM 内存或给 elk/nexus3 设 mem_limit/降配 heap。
+> 3. 健康计数口径修正：瞬时快照表述（20 healthy + 2 starting + portainer Up 无探针），不作绝对化断言；Step 3 kafka e2e 已在终态栈活体重做闭环（`post-restart-msg` 生产/消费 EXIT=0），跨周期持久化断言归入后续任务 1。
+> 4. macOS 上 startup.sh 需传参 DOCKER_VOLUME（如 `/Users/george/docker/glseven`，`/docker` 根只读），属平台使用方式（startup.sh:5-6 参数化设计明文）；macOS 零参数适配为独立后续项。
+
 ---
 
 ## 自审记录（Self-Review）
