@@ -761,6 +761,8 @@ curl -sI -H "Host: adminer.glseven.local" http://127.0.0.1:8080/ | head -1
 
 Expected: 第一条 `HTTP/1.1 302` + `Location: http://glseven.local:8000/`；第二条 `HTTP/1.1 200`（带域名的正常 vhost 不受影响）。
 
+> **复验坑（Task 5 质量审查发现）**：若在临时容器组合挂载既有 vhost 复验，镜像默认 nginx.conf 缺 `map $http_upgrade $connection_upgrade`（仓库 nginx.conf:31-35），而 snippets/proxy.conf:12 引用该变量——只挂 vhost 文件会 `unknown "connection_upgrade" variable` emerg 退出，必须连仓库主配置一起挂。另两处可选润色（catchall 注释补 8000 约定提醒 / 新增共享端口维护提醒）已评审为不影响合并，暂不做。
+
 - [ ] **Step 6: 日志轮转生效检查（平台差异注明）**
 
 ```bash
