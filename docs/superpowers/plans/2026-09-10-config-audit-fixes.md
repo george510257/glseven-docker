@@ -690,7 +690,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、
 grep -n "26 个端口\|15 条 stream\|9092（宿主 Kafka 客户端需另加\|127.0.0.1 kafka" README.md
 ```
 
-Expected: 无任何命中（全部旧表述已清除）；`grep -c "29092" README.md` ≥ 3。
+Expected: 仅允许 1 处命中——Step 4 插入的「旧『hosts 条目 `127.0.0.1 kafka`』workaround 已废弃」声明行本身含字面 `127.0.0.1 kafka`（Step 4 与本 grep 的内在矛盾，2026-09-10 裁定：声明行是预期产物、非旧表述残留；其余 `26 个端口`/`15 条 stream`/`9092（宿主 Kafka 客户端需另加` 三类旧表述须 0 命中）；`grep -c "29092" README.md` ≥ 3。
 
 - [ ] **Step 7: Commit**
 
