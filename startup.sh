@@ -38,14 +38,19 @@ mkdir -p "$DOCKER_VOLUME/grafana/data"    || { echo "Error: Failed to create gra
 chown_dir "$DOCKER_VOLUME/grafana/data" 472
 mkdir -p "$DOCKER_VOLUME/elk/data"        || { echo "Error: Failed to create elk data directory"; exit 1; }
 chown_dir "$DOCKER_VOLUME/elk/data" 1000
+mkdir -p "$DOCKER_VOLUME/phpldapadmin/sessions" "$DOCKER_VOLUME/phpldapadmin/logs" || { echo "Error: Failed to create phpldapadmin directories"; exit 1; }
+# phpldapadmin 镜像以 www-data(82) 运行：Laravel 需写 storage/logs 与 sessions，
+# 属主不对时异常处理写日志失败 → 全站 500（探针 curl -f 随之 exit 1 判 unhealthy）。
+chown_dir "$DOCKER_VOLUME/phpldapadmin" 82
 
 # fnOS(trimacl) 等存储层会把新建目录权限位剥成 000（实测 mkdir/touch 均然；dockerd 代建的 bind 源
-# 目录不受影响），非 root 容器（nexus3/prometheus/grafana/elk）随即 Permission denied 崩溃循环；
-# preflight 的数据目录修复跑在本块之前、fresh 卷场景恒空转，须在此显式恢复 mode（幂等）。
+# 目录不受影响），非 root 容器（nexus3/prometheus/grafana/elk/phpldapadmin）随即 Permission denied
+# 崩溃循环或 500；preflight 的数据目录修复跑在本块之前、fresh 卷场景恒空转，须在此显式恢复 mode（幂等）。
 chmod 755 "$DOCKER_VOLUME" 2>/dev/null || echo "WARN: chmod 755 $DOCKER_VOLUME failed, continuing..."
 for d in nexus3 prometheus grafana elk; do
   chmod 755 "$DOCKER_VOLUME/$d" "$DOCKER_VOLUME/$d/data" 2>/dev/null || echo "WARN: chmod 755 on $d dirs failed, continuing..."
 done
+chmod 755 "$DOCKER_VOLUME/phpldapadmin" "$DOCKER_VOLUME/phpldapadmin/sessions" "$DOCKER_VOLUME/phpldapadmin/logs" 2>/dev/null || echo "WARN: chmod 755 on phpldapadmin dirs failed, continuing..."
 
 # 创建 Docker 网络（幂等，已存在则跳过）
 if ! docker network inspect glseven &>/dev/null; then
