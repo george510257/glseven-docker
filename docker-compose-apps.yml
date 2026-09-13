@@ -92,5 +92,24 @@ services:
       retries: 10
       start_period: 30s
 
-  # libretv (bestzwei) 上游已于 2025-08 停更，与 LunaTV 功能重叠，已下线。
-  # 预留：IP 172.18.5.4、端口 8899。
+  iptv:
+    image: akiralereal/iptv:4.15.0
+    container_name: iptv
+    hostname: iptv
+    init: true                    # 回收 Chromium 僵尸进程
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/iptv.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/iptv/data:/iptv/data
+    networks:
+      glseven:
+        ipv4_address: 172.18.5.4
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:1905/ || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

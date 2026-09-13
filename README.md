@@ -1,6 +1,6 @@
 # glseven-docker
 
-面向开发环境的微服务基础设施 Docker Compose 编排：6 个职能域、23 个服务，统一运行在外部网络 `glseven`（172.18.0.0/16），一键起停、固定 IP、数据落盘宿主目录。
+面向开发环境的微服务基础设施 Docker Compose 编排：6 个职能域、24 个服务，统一运行在外部网络 `glseven`（172.18.0.0/16），一键起停、固定 IP、数据落盘宿主目录。
 
 ## 快速开始
 
@@ -10,8 +10,8 @@
 # 1. 准备环境变量（.env 提供 DOCKER_VOLUME / REDIS_PASSWORD 等插值，无 .env 时使用内置默认值）
 cp .env.example .env
 
-# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 23 个主机名（二级域名 = 容器名，零别名）
-echo '127.0.0.1 glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local' | sudo tee -a /etc/hosts
+# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 24 个主机名（二级域名 = 容器名，零别名）
+echo '127.0.0.1 glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local iptv.glseven.local' | sudo tee -a /etc/hosts
 
 # 3. 启动：BASE 批次 → 等待 MySQL 健康 → DEFERRED 批次 → PORTAL
 bash startup.sh
@@ -35,7 +35,7 @@ bash shutdown.sh
 | observability | prometheus .1、grafana .2、elk .3 | 172.18.2.x | BASE |
 | security | openldap .1、php-ldap-admin .2、keycloak .3 | 172.18.3.x | DEFERRED |
 | platform | nacos .1、xxl-job-admin .2、nexus3 .3、portainer .4、apisix .5 | 172.18.4.x | DEFERRED |
-| apps | ollama .1、open-webui .2、moontv .3 | 172.18.5.x | DEFERRED |
+| apps | ollama .1、open-webui .2、moontv .3、iptv .4 | 172.18.5.x | DEFERRED |
 | portal | nginx .1 | 172.18.6.x | PORTAL |
 
 批次时序（`common/compose-list.sh` 是唯一数据源，startup.sh / shutdown.sh 消费）：
@@ -48,7 +48,7 @@ bash shutdown.sh
 
 ## 服务访问入口
 
-**nginx（portal）是唯一持有宿主端口的容器**（27 个端口：8000 门户 + 10 个原生 http 监听 + 16 条 stream），其余 22 个服务零宿主端口；二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户。
+**nginx（portal）是唯一持有宿主端口的容器**（28 个端口：8000 门户 + 11 个原生 http 监听 + 16 条 stream），其余 23 个服务零宿主端口；二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户。
 
 | 服务 | 入口 | 说明 |
 |---|---|---|
@@ -70,6 +70,7 @@ bash shutdown.sh
 | Ollama | http://ollama.glseven.local:11434 | API 状态页（stream TCP 透传） |
 | Open WebUI | http://open-webui.glseven.local:8080 | LLM 对话 |
 | MoonTV | http://moontv.glseven.local:3000 | 影视聚合 |
+| iPTV | http://iptv.glseven.local:1905 | IPTV 直播源管理（管理后台 /admin，M3U /interface.m3u） |
 
 全部端点统一为「域名 + 容器原生端口」。纯 TCP 协议端口由 nginx stream 透明转发（**端口号 = 原生默认**，也可用域名形式如 `mysql.glseven.local:3306`）：
 mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、MQTT 1883、MQTT-WS 15675、kafka 29092（宿主/局域网客户端入口，双 listener 见下方「Kafka 双 listener」）、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。

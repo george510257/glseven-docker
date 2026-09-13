@@ -93,7 +93,8 @@ services:
   apisix:
     # 独立网关组件：数据面 + Admin API 就绪，路由留空由微服务开发自行配置。
     # etcd 在 infra 域：跨 compose project 不写 depends_on（已知坑），由批次时序 + 启动重试 + restart 兜底。
-    # 官方 Dashboard 已退役、无内置 UI；9443(TLS) 暂不开放（YAGNI）。
+    # Dashboard 内置于 3.6+ 镜像（独立 dashboard 项目已退役）：经 Admin API 端口的 /ui/ 路径访问
+    # （portal 9180 反代直达，输入 X-API-KEY 鉴权，键见 apisix/conf/config.yaml）；9443(TLS) 暂不开放（YAGNI）。
     image: apache/apisix:3.18.0-debian
     container_name: apisix
     hostname: apisix

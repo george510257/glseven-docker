@@ -54,6 +54,7 @@ services:
       - "11434:11434"  # stream → ollama
       - "5044:5044"    # stream → elk Beats
       - "5000:5000"    # stream → nexus3 Docker Registry（AirPlay 见 README）
+      - "1905:1905"    # http → iptv 直播源管理
     healthcheck:
       # 镜像内无 curl/wget（debian-slim 底座），沿用项目已验证的 bash /dev/tcp 探测模式；探门户监听 8000。
       test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8000' || exit 1" ]
