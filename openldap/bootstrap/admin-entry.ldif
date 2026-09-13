@@ -1,6 +1,9 @@
 # osixia/openldap 只把 cn=admin 设为 olcRootDN（DB 级 bind 凭据），目录内并无该条目。
-# phpLDAPadmin 登录要求登录者必须是真实目录条目（登录时会读取它），因此本环境需导入此条目：
-#   已初始化的卷手动导入：
+# phpLDAPadmin 登录要求登录者必须是真实目录条目（登录时会读取它），因此本环境需导入此条目。
+# 导入时机（二选一）：
+#   fresh 卷首启：compose 经官方种子通道挂入本目录（- ./openldap/bootstrap:/seed-ldif:ro +
+#   LDAP_SEED_INTERNAL_LDIF_PATH=/seed-ldif），库为空时自动导入，无需人工；
+#   已初始化的库手动导入：
 #     docker cp openldap/bootstrap/admin-entry.ldif openldap:/tmp/
 #     docker exec openldap ldapadd -x -D "cn=admin,dc=glseven,dc=com" -w admin -f /tmp/admin-entry.ldif
 # 条目自带 uid=admin（posixAccount auxiliary class），使 PLA 默认的 uid 登录模式可用：

@@ -20,6 +20,17 @@ services:
     volumes:
       - ${DOCKER_VOLUME:-/docker/glseven}/openldap/data:/var/lib/ldap
       - ${DOCKER_VOLUME:-/docker/glseven}/openldap/config:/etc/ldap/slapd.d
+      # admin-entry.ldif 经 osixia 官方种子通道（LDAP_SEED_INTERNAL_LDIF_PATH）注入：entrypoint 把
+      # /seed-ldif 复制进容器内 custom ldif 目录，仅当数据库为空（fresh 卷首启初始化）时消费——
+      # 提供 cn=admin（含 uid=admin，PLA uid 登录模式的前提，见文件头注释）；已初始化的库跳过，
+      # 后期增改条目走 ldapadd 手动导入（命令见 admin-entry.ldif 头部）。
+      # 注意勿直挂 custom 目录到该容器路径：首启完成后 LDAP_REMOVE_CONFIG_AFTER_SETUP（默认 true）
+      # 会 rm -rf assets/config——挂载点本身因 EBUSY 删不掉（service 退出、容器死亡），但其内容
+      # 会先被清空，即宿主机上的 ldif 源文件被销毁（NAS 实测复现，详见 admin-entry.ldif 历史）。
+      # :ro 挂载的附带好处是 entrypoint 的模板 sed -i 改写落在容器内副本，不触碰仓库源文件。
+      - ./openldap/bootstrap:/seed-ldif:ro
+    environment:
+      LDAP_SEED_INTERNAL_LDIF_PATH: /seed-ldif
     networks:
       glseven:
         ipv4_address: 172.18.3.1
