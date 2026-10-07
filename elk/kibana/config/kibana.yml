@@ -1,0 +1,18 @@
+# Kibana v9 configuration
+# Reference: https://www.elastic.co/guide/en/kibana/9.5/settings.html
+
+# The port to bind the Kibana server to.
+#server.port: 5601
+
+# Allow remote connections (required when running in Docker).
+server.host: "0.0.0.0"
+
+# The Kibana server's display name.
+#server.name: "kibana"
+
+# Elasticsearch connection. In Kibana v8+, 'elasticsearch.url' is replaced by
+# 'elasticsearch.hosts' (array). The sebp/elk image runs Elasticsearch on localhost.
+elasticsearch.hosts: [ "http://localhost:9200" ]
+
+# Display language.
+i18n.locale: "zh-CN"

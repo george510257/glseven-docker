@@ -1,11 +1,39 @@
 #!/bin/bash
 
-docker compose -f docker-compose-devops.yml -p devops down
+set -e
 
-#docker-compose -f docker-compose-manager.yml -p manager down
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common/compose-list.sh
+source "$SCRIPT_DIR/common/compose-list.sh"
+cd "$SCRIPT_DIR"
 
-docker compose -f docker-compose-microservices.yml -p microservices down
-docker compose -f docker-compose-kafka.yml -p kafka down
-docker compose -f docker-compose-database.yml -p database down
+echo "==========================================="
+echo "停止 GLSeven Docker 容器..."
+echo "==========================================="
 
-docker network rm glseven
+# 按启动顺序（BASE + DEFERRED + PORTAL 拼接）的逆序停止所有服务
+stop_all() {
+  local -a groups=("$@")
+  local i group
+  for (( i=${#groups[@]}-1; i>=0; i-- )); do
+    group=${groups[$i]}
+    # -t 60：默认 10s 对 kafka/elk/mysql 偏短，强制 kill 易留脏存储。
+    # 不用 stop 替代 down：容器留着会占住 glseven 网络，致随后的 network rm 失败。
+    docker compose -f "docker-compose-${group}.yml" down -t 60 2>/dev/null && echo "✓ ${group} services stopped" || echo "- ${group} not running"
+  done
+}
+
+echo "Stopping services..."
+stop_all "${COMPOSE_FILES_BASE[@]}" "${COMPOSE_FILES_DEFERRED[@]}" "${COMPOSE_FILES_PORTAL[@]}"
+
+# 移除网络（幂等，不存在则跳过）
+if docker network inspect glseven &>/dev/null; then
+  echo "Removing Docker network glseven..."
+  docker network rm glseven && echo "✓ Network glseven removed"
+else
+  echo "Network glseven not found, skipping."
+fi
+
+echo "==========================================="
+echo "所有服务已停止！"
+echo "==========================================="

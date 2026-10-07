@@ -1,0 +1,101 @@
+name: security
+
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Security 172.18.3.x ================================================================================================
+
+  openldap:
+    # openldap v1 已官方弃用，v2 仅有 alpha 版；等 v2 稳定版发布后再做一次性迁移。
+    image: osixia/openldap:1.5.0
+    container_name: openldap
+    hostname: openldap
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/openldap.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/openldap/data:/var/lib/ldap
+      - ${DOCKER_VOLUME:-/docker/glseven}/openldap/config:/etc/ldap/slapd.d
+      # admin-entry.ldif 经 osixia 官方种子通道（LDAP_SEED_INTERNAL_LDIF_PATH）注入：entrypoint 把
+      # /seed-ldif 复制进容器内 custom ldif 目录，仅当数据库为空（fresh 卷首启初始化）时消费——
+      # 提供 cn=admin（含 uid=admin，PLA uid 登录模式的前提，见文件头注释）；已初始化的库跳过，
+      # 后期增改条目走 ldapadd 手动导入（命令见 admin-entry.ldif 头部）。
+      # 注意勿直挂 custom 目录到该容器路径：首启完成后 LDAP_REMOVE_CONFIG_AFTER_SETUP（默认 true）
+      # 会 rm -rf assets/config——挂载点本身因 EBUSY 删不掉（service 退出、容器死亡），但其内容
+      # 会先被清空，即宿主机上的 ldif 源文件被销毁（NAS 实测复现，详见 admin-entry.ldif 历史）。
+      # :ro 挂载的附带好处是 entrypoint 的模板 sed -i 改写落在容器内副本，不触碰仓库源文件。
+      - ./openldap/bootstrap:/seed-ldif:ro
+    environment:
+      LDAP_SEED_INTERNAL_LDIF_PATH: /seed-ldif
+      # 必须为 false：默认 true 会在首启初始化完成后 rm -rf 容器内 assets/config，
+      # 而 /seed-ldif → assets/config/bootstrap/ldif/custom 的复制发生在**每次**启动——
+      # NAS 重启（容器 restart 而非 recreate）后目录已不存在，cp 失败即崩溃循环
+      # （2026-10-07 实测：openldap 重启 24 次后永久 down，日志 cp: No such file or directory）。
+      # 置 false 保留 assets/config，宿主侧 slapd.d 卷的初始化行为不变。
+      LDAP_REMOVE_CONFIG_AFTER_SETUP: "false"
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.1
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      test: [ "CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1:389 -b '' -s base -o ldif-wrap=no > /dev/null 2>&1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  php-ldap-admin:
+    image: phpldapadmin/phpldapadmin:2.3.11
+    container_name: php-ldap-admin
+    hostname: php-ldap-admin
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/phpldapadmin.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/sessions:/app/storage/framework/sessions
+      - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/logs:/app/storage/logs
+    depends_on:
+      openldap:
+        condition: service_healthy
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.2
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      # 探针工具按 Task 1 验证结果（默认 curl；仅 wget 可用则等价替换）。
+      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://127.0.0.1:8080/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  keycloak:
+    # start-dev 为官方开发模式（免 TLS/hostname 配置）；数据全部在 MySQL，容器无状态不挂数据卷。
+    # mysql 在 infra 域：跨 compose project 不写 depends_on，由 DEFERRED 批次（MySQL 已健康）时序保证。
+    image: keycloak/keycloak:26.7.3
+    container_name: keycloak
+    hostname: keycloak
+    restart: always
+    command: start-dev
+    env_file:
+      - common/env/common.env
+      - common/env/keycloak.env
+    networks:
+      glseven:
+        ipv4_address: 172.18.3.3
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      # 镜像内无 curl/wget，用 bash /dev/tcp 对 9000 管理端口发 HTTP 请求探测 /health/ready
+      # （端口监听 ≠ 就绪；顶层 status UP 判定即既往验证标准）。9000 由 KC_HEALTH_ENABLED/KC_METRICS_ENABLED 开启。
+      # grep 锚定顶层键（^ + 恰 4 空格缩进，Task 1 实测顶层 4 空格/子 check 12 空格），
+      # 避免命中子 check 的 "status": "UP" 行——顶层 DOWN 而子 check UP 时非锚定模式会假阳性（审查已复现）。
+      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '^    \"status\"[[:space:]]*:[[:space:]]*\"UP\"' <&3" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s   # 首启含 Flyway 迁移，较默认延长

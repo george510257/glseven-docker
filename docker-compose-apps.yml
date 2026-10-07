@@ -1,0 +1,115 @@
+name: apps
+
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Apps 172.18.5.x ====================================================================================================
+
+  ollama:
+    image: ollama/ollama:0.33.3
+    container_name: ollama
+    hostname: ollama
+    restart: always
+    tty: true
+    env_file:
+      - common/env/common.env
+      - common/env/ollama.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/ollama:/root/.ollama
+    networks:
+      glseven:
+        ipv4_address: 172.18.5.1
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      test: [ "CMD-SHELL", "ollama ls" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+        # GPU 硬请求已移除：nvidia device 驱动在 macOS(Docker Desktop) 上不存在，
+        # 会导致 compose up 失败（could not select device driver "nvidia"）；
+        # ollama 无 GPU 时自动回退 CPU 运行。Linux 宿主如需 GPU 加速，按需追加：
+        #   reservations:
+        #     devices:
+        #       - driver: nvidia
+        #         capabilities: [ gpu ]
+        #         count: all
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.11.3
+    container_name: open-webui
+    hostname: open-webui
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/open-webui.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/open-webui/data:/app/backend/data
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      glseven:
+        ipv4_address: 172.18.5.2
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      # /health 为 open-webui 自带端点；探针工具按 Task 1 验证结果。
+      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:8080/health || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  moontv:
+    image: ghcr.io/moontechlab/lunatv:v100.1.3
+    container_name: moontv
+    hostname: moontv
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/moontv.env
+    # redis 在 infra 域：跨 compose project 不写 depends_on，由 BASE 先于 DEFERRED 启动时序 + restart: always 兜底。
+    environment:
+      # Overrides REDIS_URL from moontv.env; password sourced from .env (REDIS_PASSWORD).
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-glseven_redis_2024}@redis:6379"
+    networks:
+      glseven:
+        ipv4_address: 172.18.5.3
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      # 探针工具按 Task 1 验证结果（默认 wget；仅 curl 可用则等价替换）。
+      test: [ "CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  iptv:
+    image: akiralereal/iptv:4.15.0
+    container_name: iptv
+    hostname: iptv
+    init: true                    # 回收 Chromium 僵尸进程
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/iptv.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/iptv/data:/iptv/data
+    networks:
+      glseven:
+        ipv4_address: 172.18.5.4
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:1905/ || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

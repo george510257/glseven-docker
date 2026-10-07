@@ -1,0 +1,64 @@
+name: portal
+
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Portal 172.18.6.x ==================================================================================================
+
+  nginx:
+    # 统一入口：http 虚拟主机（监听端口 = 容器原生端口，21 个 server 块，含共享端口 default_server 兜底）+ stream TCP 透明转发（16 条原生端口）。
+    # 全栈唯一持有宿主端口的容器；stream 静态上游依赖 portal 最后一批启动（compose-list.sh）。
+    image: nginx:1.30.4
+    container_name: nginx
+    hostname: nginx
+    restart: always
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ./portal/conf/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./portal/conf/snippets:/etc/nginx/snippets:ro
+      - ./portal/conf/conf.d:/etc/nginx/conf.d:ro
+      - ./portal/conf/stream-conf.d:/etc/nginx/stream-conf.d:ro
+      - ./portal/html:/usr/share/nginx/html:ro
+    networks:
+      glseven:
+        ipv4_address: 172.18.6.1
+    ports:
+      - "8000:8000"    # http：静态门户（nginx 自身约定端口，全栈唯一非原生号）
+      - "3000:3000"    # http → grafana / moontv（同端口按 Host 分流）
+      - "8080:8080"    # http → adminer / php-ldap-admin / keycloak / nacos / xxl-job-admin / open-webui
+      - "8081:8081"    # http → mongo-express / nexus3
+      - "9000:9000"    # http → portainer
+      - "9090:9090"    # http → prometheus
+      - "5601:5601"    # http → elk Kibana
+      - "9200:9200"    # http → elk ES API
+      - "15672:15672"  # http → rabbitmq 管理
+      - "9080:9080"    # http → apisix 数据面
+      - "9180:9180"    # http → apisix Admin API
+      - "3306:3306"    # stream → mysql
+      - "6379:6379"    # stream → redis
+      - "27017:27017"  # stream → mongo
+      - "5673:5672"    # stream → rabbitmq AMQP（宿主 5673：NAS 自带 rabbitmq-server 占用 5672）
+      - "1883:1883"    # stream → rabbitmq MQTT
+      - "15675:15675"  # stream → rabbitmq MQTT-WS
+      - "9092:9092"    # stream → kafka PLAINTEXT（存量兼容透传：宿主旧 hosts 路径；容器网络内直连不经 nginx）
+      - "29092:29092"  # stream → kafka EXTERNAL（宿主/局域网客户端入口，advertised 见 common/env/kafka.env）
+      - "2379:2379"    # stream → etcd（HTTP REST/gRPC 透传）
+      - "389:389"      # stream → openldap
+      - "636:636"      # stream → openldap LDAPS
+      - "8848:8848"    # stream → nacos Open API
+      - "9848:9848"    # stream → nacos gRPC
+      - "11434:11434"  # stream → ollama
+      - "5044:5044"    # stream → elk Beats
+      - "5000:5000"    # stream → nexus3 Docker Registry（AirPlay 见 README）
+      - "1905:1905"    # http → iptv 直播源管理
+    healthcheck:
+      # 镜像内无 curl/wget（debian-slim 底座），沿用项目已验证的 bash /dev/tcp 探测模式；探门户监听 8000。
+      test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8000' || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s

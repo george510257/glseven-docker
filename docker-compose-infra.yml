@@ -1,0 +1,211 @@
+name: infra
+
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Infra 172.18.1.x ===================================================================================================
+
+  mysql:
+    image: mysql:9.7.2
+    container_name: mysql
+    hostname: mysql
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/mysql.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/mysql/data:/var/lib/mysql
+      - ${DOCKER_VOLUME:-/docker/glseven}/mysql/conf.d:/etc/mysql/conf.d
+      - ./mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.1
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      # $$ 让容器内 shell 展开 env_file 注入的 MYSQL_ROOT_PASSWORD，不依赖 compose 插值。
+      test: [ "CMD-SHELL", "mysqladmin ping -h127.0.0.1 -p$$MYSQL_ROOT_PASSWORD --silent" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:8.10.1
+    container_name: redis
+    hostname: redis
+    restart: always
+    # --requirepass enables password authentication.
+    # REDIS_PASSWORD comes from .env (see .env.example); the fallback keeps no-.env usage working.
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-glseven_redis_2024}
+    env_file:
+      - common/env/common.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/redis/data:/data
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.2
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a '${REDIS_PASSWORD:-glseven_redis_2024}' ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mongo:
+    image: mongo:8.0.29
+    container_name: mongo
+    hostname: mongo
+    restart: always
+    # --auth 是 MONGO_INITDB_ROOT_*（common/env/mongo.env）真正生效的前提：
+    # 不启用时 MongoDB 完全不校验凭据，这两个变量只是初始化时建了个没人用的用户，
+    # mongo-express.env 的 ME_CONFIG_MONGODB_ADMIN* 同样空转（2026-09-21 审查发现）。
+    # 注意：root 用户仅在空数据卷首次初始化时创建；存量无认证卷直接加 --auth 会锁死，
+    # 迁移步骤见 README「存量环境迁移」的 mongo 条目。
+    command: --auth
+    env_file:
+      - common/env/common.env
+      - common/env/mongo.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/mongo/data/db:/data/db
+      - ${DOCKER_VOLUME:-/docker/glseven}/mongo/data/configdb:/data/configdb
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.3
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  mongo-express:
+    # mongo-express 已是最新稳定版（1.1.0 仍为 RC）；官方镜像已标注 DEPRECATED，维持不动。
+    image: mongo-express:1.0.2
+    container_name: mongo-express
+    hostname: mongo-express
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/mongo-express.env
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.4
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      # 镜像内仅 wget 可用（Task 1 实测，无 curl）。
+      # 启用了 basic auth（mongo-express.env），凭据经 $$ 由容器内 shell 展开，改 env 即自动跟随。
+      test: [ "CMD-SHELL", "wget -q -O /dev/null \"http://$$ME_CONFIG_BASICAUTH_USERNAME:$$ME_CONFIG_BASICAUTH_PASSWORD@127.0.0.1:8081\" || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  adminer:
+    image: adminer:6.0.1
+    container_name: adminer
+    hostname: adminer
+    restart: always
+    env_file:
+      - common/env/common.env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.5
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://127.0.0.1:8080/ || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  rabbitmq:
+    image: rabbitmq:4.3.5-management
+    container_name: rabbitmq
+    hostname: rabbitmq
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/rabbitmq.env
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/rabbitmq/data:/var/lib/rabbitmq
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.6
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: kafka
+    hostname: kafka
+    restart: always
+    env_file:
+      - common/env/common.env
+      - common/env/kafka.env
+    volumes:
+      # 仅数据目录：/mnt/shared/config 与 /etc/kafka/secrets 是 apache/kafka 官方示例里
+      # 用于「挂属性文件」和「挂 SSL 密钥」的路径，本编排两者都不用（配置走 KAFKA_* 环境变量，
+      # 无 TLS），原挂载是空目录，2026-09-21 审查后移除。
+      - ${DOCKER_VOLUME:-/docker/glseven}/kafka/data:/var/lib/kafka/data
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.7
+    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
+    healthcheck:
+      test: [ "CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  etcd:
+    # v3.7.1 已发布（2026-07）但仅 2 个月，选 3.6 成熟维护线保障 APISIX 互操作（沿 nginx stable 先例）。
+    # 供 APISIX（platform 域）与 Prometheus 使用：跨 compose project 不写 depends_on，
+    # 由 BASE 批次先于 DEFERRED 启动时序 + APISIX 启动重试 + restart: always 兜底。
+    # 宿主访问经 nginx（portal）stream 2379 透传（开发环境全量代理，用户明示决策，见规格 §4.3）。
+    # etcd 默认无认证，安全边界=glseven 容器网络；2380 peer 端口保持内网。
+    image: quay.io/coreos/etcd:v3.6.14
+    container_name: etcd
+    hostname: etcd
+    restart: always
+    env_file:
+      - common/env/common.env
+    command:
+      - etcd
+      - --name=etcd
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd=http://etcd:2380
+      - --initial-cluster-state=new
+    volumes:
+      - ${DOCKER_VOLUME:-/docker/glseven}/etcd/data:/etcd-data
+    networks:
+      glseven:
+        ipv4_address: 172.18.1.8
+    healthcheck:
+      # 镜像内无 shell（Task 1 实测），必须用 exec 形式而非 CMD-SHELL。
+      test: [ "CMD", "etcdctl", "endpoint", "health", "--endpoints=http://127.0.0.1:2379" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
