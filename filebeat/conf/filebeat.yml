@@ -1,0 +1,55 @@
+# Filebeat：采集 glseven 网络内全部容器日志 → elk 的 logstash（5044）。
+#
+# 数据来源是 Docker 容器日志文件（挂 /var/lib/docker/containers，只读），
+# 依赖 add_docker_metadata 从日志路径提取容器 ID 得到 container.name，
+# 才能按名过滤与在 Kibana 里按容器区分。
+#
+# 输入类型说明（重要，勿改回）：filebeat 9.x 中旧的 `type: container` 已不可用——
+# 它是 `log` 输入的预设，而 log 输入在 7.16 弃用、9.0 禁用，除非设 allow_deprecated_use: true。
+# 官方迁移路径即本文件所用：`type: filestream` + `parsers.container`。
+
+filebeat.inputs:
+  - type: filestream
+    id: glseven-containers
+    enabled: true
+    # Docker 日志目录下的 json 日志；路径含 64 位容器 ID，供 add_docker_metadata 匹配。
+    paths:
+      - /var/lib/docker/containers/*/*.log
+    # 容器日志经符号链接可达（Docker 会为 json.log 建 -json.log 链接），必须开启。
+    prospector.scanner.symlinks: true
+    # format: docker 关闭格式自动探测——本编排只有 Docker 一种来源，显式指定避免误判。
+    parsers:
+      - container:
+          stream: all
+          format: docker
+
+processors:
+  # 从 log.file.path 的 /var/lib/docker/containers/<id>/ 提取容器 ID → container.id / container.name / image。
+  # match_source 默认即为 true，此处显式写出以表明这条链路是过滤与索引的前提。
+  - add_docker_metadata:
+      host: "unix:///var/run/docker.sock"
+      match_source: true
+  # 采集范围排除自身与 nginx：前者会自噬日志形成回声，后者请求日志量大且已落盘轮转。
+  # 必须先有上面的 add_docker_metadata，此处才能看到 container.name。
+  - drop_event.when.or:
+      - equals:
+          container.name: "filebeat"
+      - equals:
+          container.name: "nginx"
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+
+# 直发 logstash（sebp/elk 内置 logstash 的 beats 输入），不经 nginx：
+# 容器网络内直连 elk:5044 即可（portal 的 5044 stream 仅供宿主侧外部 agent 接入）。
+# 内置输入默认要求 TLS，本编排已在 elk/logstash/config/02-beats-input.conf 覆盖为明文，
+# 故此处不配 ssl；若恢复 TLS，需在此补 certificate_authorities 指向 logstash-beats.crt。
+output.logstash:
+  hosts: ["elk:5044"]
+
+logging.level: warning
+logging.to_files: false
+
+# 自监控指标端口（仅容器网络内，当前 prometheus.yml 未抓取）。
+http.enabled: true
+http.host: 0.0.0.0
+http.port: 5066

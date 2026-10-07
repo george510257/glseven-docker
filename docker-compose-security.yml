@@ -31,6 +31,12 @@ services:
       - ./openldap/bootstrap:/seed-ldif:ro
     environment:
       LDAP_SEED_INTERNAL_LDIF_PATH: /seed-ldif
+      # 必须为 false：默认 true 会在首启初始化完成后 rm -rf 容器内 assets/config，
+      # 而 /seed-ldif → assets/config/bootstrap/ldif/custom 的复制发生在**每次**启动——
+      # NAS 重启（容器 restart 而非 recreate）后目录已不存在，cp 失败即崩溃循环
+      # （2026-10-07 实测：openldap 重启 24 次后永久 down，日志 cp: No such file or directory）。
+      # 置 false 保留 assets/config，宿主侧 slapd.d 卷的初始化行为不变。
+      LDAP_REMOVE_CONFIG_AFTER_SETUP: "false"
     networks:
       glseven:
         ipv4_address: 172.18.3.1

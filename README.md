@@ -1,6 +1,6 @@
 # glseven-docker
 
-面向开发环境的微服务基础设施 Docker Compose 编排：6 个职能域、24 个服务，统一运行在外部网络 `glseven`（172.18.0.0/16），一键起停、固定 IP、数据落盘宿主目录。
+面向开发环境的微服务基础设施 Docker Compose 编排：6 个职能域、25 个服务，统一运行在外部网络 `glseven`（172.18.0.0/16），一键起停、固定 IP、数据落盘宿主目录。
 
 ## 快速开始
 
@@ -32,7 +32,7 @@ bash shutdown.sh
 | 域（compose 文件） | 服务（容器内固定 IP 末位） | IP 段 | 启动批次 |
 |---|---|---|---|
 | infra | mysql .1、redis .2、mongo .3、mongo-express .4、adminer .5、rabbitmq .6、kafka .7、etcd .8 | 172.18.1.x | BASE |
-| observability | prometheus .1、grafana .2、elk .3 | 172.18.2.x | BASE |
+| observability | prometheus .1、grafana .2、elk .3、filebeat .4 | 172.18.2.x | BASE |
 | security | openldap .1、php-ldap-admin .2、keycloak .3 | 172.18.3.x | DEFERRED |
 | platform | nacos .1、xxl-job-admin .2、nexus3 .3、portainer .4、apisix .5 | 172.18.4.x | DEFERRED |
 | apps | ollama .1、open-webui .2、moontv .3、iptv .4 | 172.18.5.x | DEFERRED |
@@ -48,7 +48,7 @@ bash shutdown.sh
 
 ## 服务访问入口
 
-**nginx（portal）是唯一持有宿主端口的容器**（28 个端口：8000 门户 + 11 个原生 http 监听 + 16 条 stream），其余 23 个服务零宿主端口；二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户。
+**nginx（portal）是唯一持有宿主端口的容器**（28 个端口：8000 门户 + 11 个原生 http 监听 + 16 条 stream），其余 24 个服务零宿主端口；二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户。
 
 | 服务 | 入口 | 说明 |
 |---|---|---|
@@ -73,15 +73,17 @@ bash shutdown.sh
 | iPTV | http://iptv.glseven.local:1905 | IPTV 直播源管理（管理后台 /admin，M3U /interface.m3u） |
 
 全部端点统一为「域名 + 容器原生端口」。纯 TCP 协议端口由 nginx stream 透明转发（**端口号 = 原生默认**，也可用域名形式如 `mysql.glseven.local:3306`）：
-mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、MQTT 1883、MQTT-WS 15675、kafka 29092（宿主/局域网客户端入口，双 listener 见下方「Kafka 双 listener」）、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
+mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 rabbitmq-server 的 5672，容器内仍是原生 5672）、MQTT 1883、MQTT-WS 15675、kafka 29092（宿主/局域网客户端入口，双 listener 见下方「Kafka 双 listener」）、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
 
-仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380。kafka PLAINTEXT 9092 虽经 stream 透传宿主，但 advertised 裸名 `kafka:9092` 宿主不可解析，协议层对宿主不可用，Kafka 客户端一律走 29092（见下方「Kafka 双 listener」）。
+仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380、filebeat 指标 5066（filebeat 是日志生产者，无用户界面，三类同步点检查中整体豁免）。kafka PLAINTEXT 9092 虽经 stream 透传宿主，但 advertised 裸名 `kafka:9092` 宿主不可解析，协议层对宿主不可用，Kafka 客户端一律走 29092（见下方「Kafka 双 listener」）。
 
 ## 配置约定
 
 - **env 分层**：每个服务一个 `common/env/<service>.env`，compose 通过 `env_file` 引用；含默认凭据的文件顶部有 WARNING 注释，生产部署前必须修改。
 - **服务互访走服务名**（Docker DNS），不硬编码 IP；固定 IP 仅用于宿主侧排查与防火墙放行。
 - **监控接入**：`prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。
+- **日志接入**：`filebeat`（observability 域，172.18.2.4）经 Docker 容器日志接口采集，直发 `elk:5044` 的 logstash；`elk/logstash/config/02-beats-input.conf` 覆盖镜像内置输入为**明文**（内置版要求 TLS）。Kibana 索引前缀为 `filebeat-`（非 `logstash-*`）。
+- **新增服务的同步点**：加一个服务要改 5 处——`docker-compose-<域>.yml`、`docker-compose-portal.yml`（ports）、`portal/conf/{conf.d,stream-conf.d}/<服务名>.conf`、`portal/html/index.html` 卡片、README 的 /etc/hosts 清单与访问矩阵。`common/check-consistency.sh`（preflight 第 8 步）会机械校验这些同步点，漏改会告警但不阻断启动。
 
 ## 容器日志轮转与 etcd 风险边界
 
@@ -101,6 +103,15 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5672（由 35672 回归默认）、
 - 独立网关组件：数据面 :9080 + Admin API :9180，**路由留空**由微服务开发自行配置（无路由时数据面 404 为预期）。
 - 无内置 UI（官方 Dashboard 已退役），管理走 Admin API，`X-API-KEY` 见 `apisix/conf/config.yaml`。
 - 配置存储为 infra 域的 etcd（3.6.14 成熟线）；`allow_admin: 0.0.0.0/0` 由 X-API-KEY 守卫（无/错 key 401），取舍说明见配置文件注释。
+
+### ELK + filebeat 日志闭环
+
+- `sebp/elk` 提供 ES(9200)/Kibana(5601)/logstash(5044)；`filebeat` 采集容器日志发往 logstash，索引前缀 `filebeat-`。
+- **`sebp/elk` 镜像不含 filebeat**（上游 Dockerfile 只装 ES/Logstash/Kibana 三件），filebeat 必须独立部署——上游仓库的 `nginx-filebeat/` 也是独立容器示例，本编排方式与其一致。
+- 内置 beats 输入**要求 TLS**（镜像自签证书，上游示例 filebeat.yml 即配 `certificate_authorities`），本编排以 `elk/logstash/config/02-beats-input.conf` 覆盖为明文——glseven 为隔离的开发环境网络，与全栈其余明文组件一致。恢复 TLS 的方法见该文件头注释。
+- 输入类型用 `filestream` + `parsers.container`，**不是** `type: container`：后者是已弃用的 `log` 输入预设，9.0 起禁用（filebeat 9.x 上直接失效）。
+- 按 `container.name` 过滤依赖 `add_docker_metadata` 从日志路径提取容器 ID，两者缺一不可；排除自身与 nginx（后者请求日志量大且已落盘轮转）。
+- 探针用 `filebeat test output` 而非 `test config`：后者只校验 YAML 语法，配置对但连不上 logstash 会假报健康。
 
 ### Kafka 双 listener（4.3.1）
 
@@ -126,6 +137,36 @@ IP 变化会使容器全量重建；数据卷按 `DOCKER_VOLUME` 子目录绑定
 | prometheus | 172.18.4.1 → 172.18.2.1 | | open-webui | 172.18.9.2 → 172.18.5.2 |
 | grafana | 172.18.4.2 → 172.18.2.2 | | moontv | 172.18.8.1 → 172.18.5.3 |
 | elk | 172.18.4.3 → 172.18.2.3 | | nginx | 172.18.10.1 → 172.18.6.1 |
+
+### 2026-09-21 审查修复的两项存量迁移（升级前必读）
+
+**1. mongo 启用认证 → 存量无认证卷会锁死**
+
+`docker-compose-infra.yml` 的 mongo 新增了 `command: --auth`，让 `common/env/mongo.env` 的
+`MONGO_INITDB_ROOT_*` 真正生效（此前未启用 auth，该变量只是建了个没人用的用户）。
+
+**但 `MONGO_INITDB_ROOT_*` 只在空数据卷首次初始化时创建用户。** 存量卷若已有数据（在无认证状态下建的），
+直接拉起会进入「需要认证但没有任何用户」的状态，**任何客户端都无法登录**。二选一：
+
+```shell
+# 方案 A：保留数据——先在旧容器（未加 --auth 时）手工建 root 用户，再升级
+docker exec -it mongo mongosh admin --eval '
+  db.createUser({user:"root",pwd:"root",roles:[{role:"root",db:"admin"}]})'
+# 确认建好后，再 docker compose -f docker-compose-infra.yml up -d mongo
+
+# 方案 B：数据可弃——直接重建（会清空 mongo 数据）
+bash shutdown.sh && sudo rm -rf "$DOCKER_VOLUME/mongo/data" && bash startup.sh
+```
+
+**2. kafka 数据开始落盘 → 存量数据在容器可写层，升级即丢**
+
+kafka 此前未设 `KAFKA_LOG_DIRS`，数据实际写在 `/tmp/kafka-logs`（容器可写层），
+每次 `shutdown.sh` 全部丢失。现已在 `common/env/kafka.env` 补上 `KAFKA_LOG_DIRS=/var/lib/kafka/data`
+与固定 `KAFKA_CLUSTER_ID`，数据开始落宿主机卷。
+
+首次重建后角色相反：**此前容器可写层里的数据不会被迁移**，重建即丢一次（本就留不住）；
+此后 `shutdown.sh` 不再丢数据。若存量环境有需要保留的消息，请在重建前自行导出。
+另需确认宿主机 `$DOCKER_VOLUME/kafka/data` 属主为 1000（startup.sh 已纳入 DIR_SPECS 自动处理）。
 
 ### Keycloak 存量库 SQL（仅存量 MySQL 需手动执行一次；全新初始化由 init.sql 自动完成）
 
@@ -167,3 +208,4 @@ flush privileges;
 - **Registry :5000**：端口绑定主体是 nginx（portal），但 macOS 上该端口仍可能被 AirPlay Receiver（ControlCenter 进程）占用导致容器启动报 `port is already allocated`，需在系统设置关闭 AirPlay Receiver（全栈唯一需宿主侧配合的端口）。
 - **ollama GPU**：GPU 请求默认关闭（docker-compose-apps.yml 中 `deploy.resources.reservations` 为注释块）。Linux 宿主如需 GPU 加速，取消该注释块后 `docker compose -f docker-compose-apps.yml up -d ollama`，要求 NVIDIA 驱动 ≥550（旧卡 ≥570）；macOS Docker Desktop 无 nvidia device driver，保持默认 CPU 运行。
 - **open-webui 首启**：需从 HuggingFace 下载 embedding 模型，网络受限环境可用环境变量 `HF_ENDPOINT=https://hf-mirror.com` 指向镜像源。
+- **filebeat 挂 docker.sock**：以 `user: root` 运行并只读挂载 `/var/run/docker.sock` 与 `/var/lib/docker/containers`（采集容器日志所需）。Docker Desktop（macOS/Windows）下这些路径由 VM 侧提供，通常可直接工作；若日志采集为空，先 `docker logs filebeat` 看是否为 socket 路径差异。该容器的 docker.sock 是**只读**挂载，不具备改写宿主 Docker 状态的能力。

@@ -17,7 +17,9 @@ stop_all() {
   local i group
   for (( i=${#groups[@]}-1; i>=0; i-- )); do
     group=${groups[$i]}
-    docker compose -f "docker-compose-${group}.yml" down 2>/dev/null && echo "✓ ${group} services stopped" || echo "- ${group} not running"
+    # -t 60：默认 10s 对 kafka/elk/mysql 偏短，强制 kill 易留脏存储。
+    # 不用 stop 替代 down：容器留着会占住 glseven 网络，致随后的 network rm 失败。
+    docker compose -f "docker-compose-${group}.yml" down -t 60 2>/dev/null && echo "✓ ${group} services stopped" || echo "- ${group} not running"
   done
 }
 

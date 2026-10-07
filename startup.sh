@@ -29,28 +29,38 @@ chown_dir() {
 }
 
 # 创建必要的目录并设置权限（目录创建失败仍致命）
+# 表驱动：每条为 "<相对 DOCKER_VOLUME 的路径> <宿主属主 uid>"。新增非 root 容器时在此加一行即可，
+# 无需改下面的创建/授权/恢复 mode 三段逻辑（原先散在四处硬编码，易漏，2026-09-21 审查后收敛）。
+# 属主 uid 依据：nexus3=200、prometheus=65534(nobody)、grafana=472、elk/kafka=1000、phpldapadmin=82(www-data)。
+# kafka 是 2026-09-21 修复「数据不落盘」时新增：设了 KAFKA_LOG_DIRS 后 compose 会预建
+# /var/lib/kafka/data 挂载点，属主不是 1000(appuser) 则 broker 起不来。
+DIR_SPECS=(
+  "nexus3/data 200"
+  "prometheus/data 65534"
+  "grafana/data 472"
+  "elk/data 1000"
+  "kafka/data 1000"
+  "phpldapadmin 82"
+  "phpldapadmin/sessions 82"
+  "phpldapadmin/logs 82"
+)
+
 echo "Creating directories..."
-mkdir -p "$DOCKER_VOLUME/nexus3/data/"    || { echo "Error: Failed to create nexus3 data directory"; exit 1; }
-chown_dir "$DOCKER_VOLUME/nexus3/data/" 200
-mkdir -p "$DOCKER_VOLUME/prometheus/data" || { echo "Error: Failed to create prometheus data directory"; exit 1; }
-chown_dir "$DOCKER_VOLUME/prometheus/data" 65534
-mkdir -p "$DOCKER_VOLUME/grafana/data"    || { echo "Error: Failed to create grafana data directory"; exit 1; }
-chown_dir "$DOCKER_VOLUME/grafana/data" 472
-mkdir -p "$DOCKER_VOLUME/elk/data"        || { echo "Error: Failed to create elk data directory"; exit 1; }
-chown_dir "$DOCKER_VOLUME/elk/data" 1000
-mkdir -p "$DOCKER_VOLUME/phpldapadmin/sessions" "$DOCKER_VOLUME/phpldapadmin/logs" || { echo "Error: Failed to create phpldapadmin directories"; exit 1; }
-# phpldapadmin 镜像以 www-data(82) 运行：Laravel 需写 storage/logs 与 sessions，
-# 属主不对时异常处理写日志失败 → 全站 500（探针 curl -f 随之 exit 1 判 unhealthy）。
-chown_dir "$DOCKER_VOLUME/phpldapadmin" 82
+for spec in "${DIR_SPECS[@]}"; do
+  dir="$DOCKER_VOLUME/${spec% *}"
+  uid="${spec##* }"
+  mkdir -p "$dir" || { echo "Error: Failed to create directory $dir"; exit 1; }
+  chown_dir "$dir" "$uid"
+done
 
 # fnOS(trimacl) 等存储层会把新建目录权限位剥成 000（实测 mkdir/touch 均然；dockerd 代建的 bind 源
-# 目录不受影响），非 root 容器（nexus3/prometheus/grafana/elk/phpldapadmin）随即 Permission denied
-# 崩溃循环或 500；preflight 的数据目录修复跑在本块之前、fresh 卷场景恒空转，须在此显式恢复 mode（幂等）。
+# 目录不受影响），非 root 容器（上述全部）随即 Permission denied 崩溃循环或 500；
+# preflight 的数据目录修复跑在本块之前、fresh 卷场景恒空转，须在此显式恢复 mode（幂等）。
 chmod 755 "$DOCKER_VOLUME" 2>/dev/null || echo "WARN: chmod 755 $DOCKER_VOLUME failed, continuing..."
-for d in nexus3 prometheus grafana elk; do
-  chmod 755 "$DOCKER_VOLUME/$d" "$DOCKER_VOLUME/$d/data" 2>/dev/null || echo "WARN: chmod 755 on $d dirs failed, continuing..."
+for spec in "${DIR_SPECS[@]}"; do
+  dir="$DOCKER_VOLUME/${spec% *}"
+  chmod 755 "$dir" 2>/dev/null || echo "WARN: chmod 755 $dir failed, continuing..."
 done
-chmod 755 "$DOCKER_VOLUME/phpldapadmin" "$DOCKER_VOLUME/phpldapadmin/sessions" "$DOCKER_VOLUME/phpldapadmin/logs" 2>/dev/null || echo "WARN: chmod 755 on phpldapadmin dirs failed, continuing..."
 
 # 创建 Docker 网络（幂等，已存在则跳过）
 if ! docker network inspect glseven &>/dev/null; then

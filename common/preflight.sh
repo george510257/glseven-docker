@@ -17,8 +17,10 @@
 #                          docker 自身监听）占用时提前报错，避免 nginx up 失败后才暴露。
 # 7. ensure_docker_log_rotation Linux 上幂等写入 /etc/docker/daemon.json 默认日志轮转
 #                          （json-file 50m × 3），防长期运行 NAS 磁盘被 docker 日志吃满。
+# 8. check_service_consistency 校验「新增服务须同步的 5 处」是否齐全（委托 common/check-consistency.sh），
+#                          只告警不阻断：漏 hosts 条目表现为「浏览器打不开」，无配置报错，须提前暴露。
 # 平台约定：1/3/4/7 仅 Linux 执行（macOS Docker Desktop 的 bind mount 权限由 VM 侧处理，
-# 且无 sysctl/ip/ss 等命令，daemon.json 走 GUI 配置）；2/5 跨平台；6 跨平台（macOS 用 lsof）。
+# 且无 sysctl/ip/ss 等命令，daemon.json 走 GUI 配置）；2/5/8 跨平台；6 跨平台（macOS 用 lsof）。
 
 # 镜像代理清单：每行 "<registry> <mirror1> <mirror2> ..."，按序尝试命中即止；
 # 全部失败兜底直连。均以 <mirror>/<owner>/<repo> 前缀形式代理。
@@ -41,7 +43,7 @@ preflight_on_linux() { [ "$(uname -s)" = "Linux" ]; }
 #    mkdir/chown_dir 与容器自建生成，且数据目录可能很大不宜每次 -R 遍历）
 fix_dir_permissions() {
   preflight_on_linux || return 0
-  echo "Preflight 1/7: fixing permissions..."
+  echo "Preflight 1/8: fixing permissions..."
   chmod -R u+rwX,go+rX "$SCRIPT_DIR" 2>/dev/null || echo "WARN: chmod -R $SCRIPT_DIR failed (need root?), continuing..."
   # .env 含全部组件凭据，不得因上面的 go+rX 递归放权被同机用户读取
   # 用 if 而非 [ ] && cmd || echo：.env 不存在时后者会误报 chmod 失败，且 set -e 下短路链不可靠
@@ -61,7 +63,7 @@ fix_dir_permissions() {
 # 2) .env 保障（compose 插值读取项目目录 .env；启动参数 DOCKER_VOLUME 已 export，优先级更高）
 ensure_env_file() {
   if [ ! -f "$SCRIPT_DIR/.env" ]; then
-    echo "Preflight 2/7: .env not found, generating from .env.example..."
+    echo "Preflight 2/8: .env not found, generating from .env.example..."
     cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env" || { echo "Error: failed to create $SCRIPT_DIR/.env"; exit 1; }
     # 本步在 fix_dir_permissions 之后执行，新生 .env（默认 644）需立即收紧
     chmod 600 "$SCRIPT_DIR/.env" 2>/dev/null || echo "WARN: chmod 600 $SCRIPT_DIR/.env failed, continuing..."
@@ -75,7 +77,7 @@ ensure_max_map_count() {
   local current
   current=$(cat /proc/sys/vm/max_map_count 2>/dev/null) || { echo "WARN: cannot read vm.max_map_count, skipping"; return 0; }
   if [ "$current" -lt "$PREFLIGHT_MAX_MAP_COUNT" ]; then
-    echo "Preflight 3/7: vm.max_map_count=$current too low, setting to $PREFLIGHT_MAX_MAP_COUNT..."
+    echo "Preflight 3/8: vm.max_map_count=$current too low, setting to $PREFLIGHT_MAX_MAP_COUNT..."
     sysctl -w "vm.max_map_count=$PREFLIGHT_MAX_MAP_COUNT" || { echo "Error: failed to set vm.max_map_count (need root)"; exit 1; }
     grep -q "vm.max_map_count" /etc/sysctl.conf 2>/dev/null || echo "vm.max_map_count=$PREFLIGHT_MAX_MAP_COUNT" >> /etc/sysctl.conf
     echo "Persisted to /etc/sysctl.conf"
@@ -89,7 +91,7 @@ clean_orphan_bridges() {
   for iface in $(ls /sys/class/net 2>/dev/null | grep '^br-'); do
     netid="${iface#br-}"
     if ! docker network inspect "$netid" >/dev/null 2>&1; then
-      echo "Preflight 4/7: removing orphan bridge $iface (docker network $netid not found)..."
+      echo "Preflight 4/8: removing orphan bridge $iface (docker network $netid not found)..."
       ip link del "$iface" || echo "WARN: failed to remove $iface, continuing..."
     fi
   done
@@ -101,7 +103,7 @@ pull_registry_images() {
   local img entry registry mirror mirror_img pulled
   for img in $(grep -hoE "image:[[:space:]]*(ghcr\.io|quay\.io)/[A-Za-z0-9_./:-]+" "$SCRIPT_DIR"/docker-compose-*.yml 2>/dev/null | awk '{print $2}' | sort -u); do
     docker image inspect "$img" >/dev/null 2>&1 && continue
-    echo "Preflight 5/7: $img missing locally, pulling via mirror..."
+    echo "Preflight 5/8: $img missing locally, pulling via mirror..."
     pulled=""
     for entry in "${PREFLIGHT_REGISTRY_MIRRORS[@]}"; do
       registry=${entry%% *}
@@ -155,11 +157,11 @@ ensure_docker_log_rotation() {
     if grep -q '"log-driver"' "$daemon_conf" && grep -q '"log-opts"' "$daemon_conf"; then
       return 0
     fi
-    echo "Preflight 7/7: $daemon_conf exists but lacks log-driver/log-opts; merge manually, e.g.:"
+    echo "Preflight 7/8: $daemon_conf exists but lacks log-driver/log-opts; merge manually, e.g.:"
     echo "  \"log-driver\": \"json-file\", \"log-opts\": { \"max-size\": \"$PREFLIGHT_LOG_MAX_SIZE\", \"max-file\": \"$PREFLIGHT_LOG_MAX_FILE\" }"
     return 0
   fi
-  echo "Preflight 7/7: writing default log rotation to $daemon_conf ..."
+  echo "Preflight 7/8: writing default log rotation to $daemon_conf ..."
   mkdir -p /etc/docker 2>/dev/null || { echo "WARN: cannot create /etc/docker, skipping log rotation setup"; return 0; }
   if ! printf '{\n  "log-driver": "json-file",\n  "log-opts": { "max-size": "%s", "max-file": "%s" }\n}\n' \
        "$PREFLIGHT_LOG_MAX_SIZE" "$PREFLIGHT_LOG_MAX_FILE" > "$daemon_conf.tmp" 2>/dev/null; then
@@ -176,9 +178,21 @@ ensure_docker_log_rotation() {
   systemctl reload docker 2>/dev/null || echo "WARN: systemctl reload docker failed; restart docker to apply"
 }
 
+# 8) 服务同步一致性：新增服务须同步的 5 处（compose / portal vhost / stream 转发 / 门户卡片 /
+#    README 的 hosts 清单）散落各文件，无机制保证不漏——此步机械校验，只告警不阻断
+#    （漏 hosts 条目的失败现象是「浏览器打不开」而非配置报错，最难定位，必须提前报出来）。
+check_service_consistency() {
+  if [ -f "$SCRIPT_DIR/common/check-consistency.sh" ]; then
+    # shellcheck source=common/check-consistency.sh
+    bash "$SCRIPT_DIR/common/check-consistency.sh"
+  else
+    echo "  [!] common/check-consistency.sh 缺失，跳过同步一致性校验"
+  fi
+}
+
 run_preflight() {
   echo "-------------------------------------------"
-  echo "Preflight: permissions / env / sysctl / bridges / registry images / ports / log rotation"
+  echo "Preflight: permissions / env / sysctl / bridges / registry images / ports / log rotation / consistency"
   echo "-------------------------------------------"
   fix_dir_permissions
   ensure_env_file
@@ -187,5 +201,6 @@ run_preflight() {
   pull_registry_images
   check_published_ports
   ensure_docker_log_rotation
+  check_service_consistency
   echo "Preflight passed."
 }

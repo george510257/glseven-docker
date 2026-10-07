@@ -60,6 +60,12 @@ services:
     container_name: mongo
     hostname: mongo
     restart: always
+    # --auth 是 MONGO_INITDB_ROOT_*（common/env/mongo.env）真正生效的前提：
+    # 不启用时 MongoDB 完全不校验凭据，这两个变量只是初始化时建了个没人用的用户，
+    # mongo-express.env 的 ME_CONFIG_MONGODB_ADMIN* 同样空转（2026-09-21 审查发现）。
+    # 注意：root 用户仅在空数据卷首次初始化时创建；存量无认证卷直接加 --auth 会锁死，
+    # 迁移步骤见 README「存量环境迁移」的 mongo 条目。
+    command: --auth
     env_file:
       - common/env/common.env
       - common/env/mongo.env
@@ -154,9 +160,10 @@ services:
       - common/env/common.env
       - common/env/kafka.env
     volumes:
-      - ${DOCKER_VOLUME:-/docker/glseven}/kafka/config:/mnt/shared/config
+      # 仅数据目录：/mnt/shared/config 与 /etc/kafka/secrets 是 apache/kafka 官方示例里
+      # 用于「挂属性文件」和「挂 SSL 密钥」的路径，本编排两者都不用（配置走 KAFKA_* 环境变量，
+      # 无 TLS），原挂载是空目录，2026-09-21 审查后移除。
       - ${DOCKER_VOLUME:-/docker/glseven}/kafka/data:/var/lib/kafka/data
-      - ${DOCKER_VOLUME:-/docker/glseven}/kafka/secrets:/etc/kafka/secrets
     networks:
       glseven:
         ipv4_address: 172.18.1.7
