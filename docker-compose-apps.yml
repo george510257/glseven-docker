@@ -102,7 +102,9 @@ services:
       - common/env/common.env
       - common/env/iptv.env
     volumes:
+      # /migu/data 是镜像内置 VOLUME；不显式覆盖时每次重建容器都会生成匿名 hash 卷。
       - ${DOCKER_VOLUME:-/docker/glseven}/iptv/data:/iptv/data
+      - ${DOCKER_VOLUME:-/docker/glseven}/iptv/migu:/migu/data
     networks:
       glseven:
         ipv4_address: 172.18.5.4
