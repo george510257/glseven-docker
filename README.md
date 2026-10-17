@@ -64,15 +64,15 @@ bash shutdown.sh
 | XXL-JOB | http://xxl-job-admin.glseven.local:8080/xxl-job-admin/ | 控制台（context-path 保留前缀） |
 | Nexus | http://nexus3.glseven.local:8081 | Web UI（Docker Registry 走 localhost:5000） |
 | Portainer | http://portainer.glseven.local:9000 | 容器管理 |
-| APISIX | http://apisix.glseven.local:9080 | 数据面（Admin API 同域名 :9180，X-API-KEY 见 apisix/conf/config.yaml） |
+| APISIX | http://apisix.glseven.local:9180/ui | Dashboard / Admin API（X-API-KEY 见 apisix/conf/config.yaml）；数据面 :9080 |
 | Prometheus | http://prometheus.glseven.local:9090 | 指标（7 个抓取 job） |
 | Grafana | http://grafana.glseven.local:3000 | 可视化（数据源已 provision） |
 | Kibana | http://elk.glseven.local:5601 | 日志检索（ES API 同域名 :9200） |
-| etcd | http://etcd.glseven.local:2379 | REST/health/metrics（stream TCP 透传，curl 可用） |
+| etcd | http://etcd.glseven.local:2379/health | 健康检查 API（`/version`、`/metrics` 可用；stream TCP 透传） |
 | Ollama | http://ollama.glseven.local:11434 | API 状态页（stream TCP 透传） |
 | Open WebUI | http://open-webui.glseven.local:8080 | LLM 对话 |
 | MoonTV | http://moontv.glseven.local:3000 | 影视聚合 |
-| iPTV | http://iptv.glseven.local:1905 | IPTV 直播源管理（管理后台 /admin，M3U /interface.m3u） |
+| iPTV | http://iptv.glseven.local:1905/admin | IPTV 直播源管理后台（M3U /interface.m3u） |
 
 全部端点统一为「域名 + 容器原生端口」。纯 TCP 协议端口由 nginx stream 透明转发（**端口号 = 原生默认**，也可用域名形式如 `mysql.glseven.local:3306`）：
 mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 rabbitmq-server 的 5672，容器内仍是原生 5672）、MQTT 1883、MQTT-WS 15675、kafka 29092（宿主/局域网客户端入口，双 listener 见下方「Kafka 双 listener」）、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
@@ -103,7 +103,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 ### APISIX 3.18.0
 
 - 独立网关组件：数据面 :9080 + Admin API :9180，**路由留空**由微服务开发自行配置（无路由时数据面 404 为预期）。
-- 无内置 UI（官方 Dashboard 已退役），管理走 Admin API，`X-API-KEY` 见 `apisix/conf/config.yaml`。
+- 内置 Dashboard 访问入口为 `/ui/`，配置与路由管理走 Admin API，`X-API-KEY` 见 `apisix/conf/config.yaml`。
 - 配置存储为 infra 域的 etcd（3.6.14 成熟线）；`allow_admin: 0.0.0.0/0` 由 X-API-KEY 守卫（无/错 key 401），取舍说明见配置文件注释。
 
 ### ELK + filebeat 日志闭环
