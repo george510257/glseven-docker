@@ -10,18 +10,20 @@
 # 1. 准备环境变量（.env 提供 DOCKER_VOLUME / REDIS_PASSWORD 等插值，无 .env 时使用内置默认值）
 cp .env.example .env
 
-# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 24 个主机名（二级域名 = 容器名，零别名）
-echo '127.0.0.1 glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local iptv.glseven.local' | sudo tee -a /etc/hosts
+# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 24 个主机名（服务二级域名 = 容器名，门户为 portal，零别名）
+echo '127.0.0.1 portal.glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local iptv.glseven.local' | sudo tee -a /etc/hosts
 
 # 3. 启动：BASE 批次 → 等待 MySQL 健康 → DEFERRED 批次 → PORTAL
 bash startup.sh
 
 # 4. 全部入口聚合在导航页（nginx 为唯一持有宿主端口的容器）
-open http://glseven.local:8000
+open http://portal.glseven.local:8000
 
 # 停止：按启动逆序 down 并移除 glseven 网络
 bash shutdown.sh
 ```
+
+存量环境升级时，需在 `/etc/hosts` 追加 `127.0.0.1 portal.glseven.local`。根域条目可以保留，`glseven.local:8000` 会自动 301 到新入口。
 
 数据目录由 startup.sh 的第一个参数指定（默认 `/docker/glseven`）：`bash startup.sh /data/glseven`。Linux 上需 root/sudo 执行（脚本将 nexus3/prometheus/grafana/elk 数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
 
@@ -48,11 +50,11 @@ bash shutdown.sh
 
 ## 服务访问入口
 
-**nginx（portal）是唯一持有宿主端口的容器**（28 个端口：8000 门户 + 11 个原生 http 监听 + 16 条 stream），其余 24 个服务零宿主端口；二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户。
+**nginx（portal）是唯一持有宿主端口的容器**（28 个端口：8000 门户 + 11 个原生 http 监听 + 16 条 stream），其余 24 个服务零宿主端口；门户二级域名固定为 `portal.glseven.local`（容器名仍为 `nginx`），其余服务二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户；根域 `glseven.local:8000` 仅作兼容跳转。
 
 | 服务 | 入口 | 说明 |
 |---|---|---|
-| 导航门户 | http://glseven.local:8000 | 全部入口聚合（nginx 静态页） |
+| 导航门户 | http://portal.glseven.local:8000 | 全部入口聚合（nginx 静态页） |
 | Adminer | http://adminer.glseven.local:8080 | MySQL/Mongo 管理 |
 | mongo-express | http://mongo-express.glseven.local:8081 | MongoDB 管理（凭据见 env） |
 | RabbitMQ 管理 | http://rabbitmq.glseven.local:15672 | AMQP/MQTT 走下方协议端口 |

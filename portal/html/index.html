@@ -30,7 +30,7 @@
 <body>
 <div class="wrap">
   <h1>GlSeven 导航</h1>
-  <div class="sub">统一经 nginx 代理：二级域名 = 容器名，端口 = 容器原生端口（首次使用需 /etc/hosts 初始化，见 README）</div>
+  <div class="sub">统一经 nginx 代理：门户入口为 portal.glseven.local，服务二级域名 = 容器名，端口 = 容器原生端口（首次使用需 /etc/hosts 初始化，见 README）</div>
 
   <div class="group-title">基础设施</div>
   <div class="grid">
@@ -72,7 +72,7 @@
   <footer>GlSeven Docker · nginx unified entry</footer>
 </div>
 <script>
-  // 链接 = 二级域名（=容器名）+ 容器原生端口（data-port），协议端口类服务不走此处（见 README）。
+  // 链接 = 服务二级域名（=容器名）+ 容器原生端口（data-port），协议端口类服务不走此处（见 README）。
   document.querySelectorAll("a[data-host]").forEach(function (a) {
     a.href = "http://" + a.dataset.host + ".glseven.local:" + a.dataset.port + (a.dataset.path || "/");
   });
