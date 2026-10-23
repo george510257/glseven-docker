@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Create tag and release
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(bash .github/scripts/next-version.sh)"
+          printf '%s\n' "$output"
+          printf '%s\n' "$output" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        if: steps.version.outputs.release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/release-notes.sh \
+            --from "${{ steps.version.outputs.previous_tag }}" \
+            --to "${{ steps.version.outputs.version }}" \
+            --repository "${{ github.repository }}" \
+            > /tmp/release-notes.md
+
+      - name: Create and push annotated tag
+        if: >-
+          steps.version.outputs.release == 'true' &&
+          steps.version.outputs.tag_on_head != 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$VERSION"
+          git push origin "refs/tags/$VERSION"
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.release == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "GitHub Release $VERSION already exists"
+            exit 0
+          fi
+          gh release create "$VERSION" \
+            --verify-tag \
+            --title "$VERSION" \
+            --notes-file /tmp/release-notes.md
+
+      - name: Report skipped release
+        if: steps.version.outputs.release != 'true'
+        run: echo "No releasable Conventional Commits found; skipping release."

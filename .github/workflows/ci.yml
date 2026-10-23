@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - develop
+      - main
+  push:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            bash -n "$file"
+          done < <(git ls-files -z '*.sh')
+
+      - name: Prepare Compose environment
+        run: cp .env.example .env
+
+      - name: Validate Compose files
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(docker-compose-*.yml)
+          [[ ${#files[@]} -gt 0 ]]
+          for file in "${files[@]}"; do
+            echo "Validating $file"
+            docker compose -f "$file" config -q
+          done
+
+      - name: Check portal consistency
+        run: bash common/check-consistency.sh
+
+      - name: Test release scripts
+        run: bash .github/scripts/test-release-scripts.sh
+
+      - name: Check changed lines for whitespace errors
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request)
+              git fetch --no-tags origin \
+                "+refs/heads/$BASE_REF:refs/remotes/origin/$BASE_REF"
+              merge_base="$(git merge-base "origin/$BASE_REF" HEAD)"
+              git diff --check "$merge_base" HEAD
+              ;;
+            push)
+              if [[ "$EVENT_BEFORE" =~ ^0+$ ]]; then
+                git show --check --oneline --no-renames HEAD
+              else
+                git diff --check "$EVENT_BEFORE" HEAD
+              fi
+              ;;
+            *)
+              git show --check --oneline --no-renames HEAD
+              ;;
+          esac
