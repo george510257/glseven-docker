@@ -60,11 +60,15 @@ fix_dir_permissions() {
   fi
 }
 
-# 2) .env 保障（compose 插值读取项目目录 .env；启动参数 DOCKER_VOLUME 已 export，优先级更高）
+# 2) .env 保障（compose 插值读取项目目录 .env；startup.sh 已解析并 export DOCKER_VOLUME，优先级更高）
 ensure_env_file() {
   if [ ! -f "$SCRIPT_DIR/.env" ]; then
     echo "Preflight 2/8: .env not found, generating from .env.example..."
     cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env" || { echo "Error: failed to create $SCRIPT_DIR/.env"; exit 1; }
+    if ! grep -qE '^[[:space:]]*(export[[:space:]]+)?DOCKER_VOLUME=' "$SCRIPT_DIR/.env"; then
+      printf '\n# Persisted by startup.sh so direct docker compose commands use the same path.\nDOCKER_VOLUME=%s\n' \
+        "$DOCKER_VOLUME" >> "$SCRIPT_DIR/.env"
+    fi
     # 本步在 fix_dir_permissions 之后执行，新生 .env（默认 644）需立即收紧
     chmod 600 "$SCRIPT_DIR/.env" 2>/dev/null || echo "WARN: chmod 600 $SCRIPT_DIR/.env failed, continuing..."
     echo "WARN: review $SCRIPT_DIR/.env and common/env/*.env for default credentials before production use."

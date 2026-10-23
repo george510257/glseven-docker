@@ -7,7 +7,7 @@
 前置：Docker Compose v2+（compose 文件使用顶层 `name:` 字段）。GPU 场景默认关闭，见下方「已知平台限制」的 ollama GPU 条目。
 
 ```shell
-# 1. 准备环境变量（.env 提供 DOCKER_VOLUME / REDIS_PASSWORD 等插值，无 .env 时使用内置默认值）
+# 1. 准备环境变量（.env 提供 REDIS_PASSWORD 等插值；DOCKER_VOLUME 可选）
 cp .env.example .env
 
 # 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 24 个主机名（服务二级域名 = 容器名，门户为 portal，零别名）
@@ -25,7 +25,7 @@ bash shutdown.sh
 
 存量环境升级时，需在 `/etc/hosts` 追加 `127.0.0.1 portal.glseven.local`。根域条目可以保留，`glseven.local:8000` 会自动 301 到新入口。
 
-数据目录由 startup.sh 的第一个参数指定（默认 `/docker/glseven`）：`bash startup.sh /data/glseven`。Linux 上需 root/sudo 执行（脚本将 nexus3/prometheus/grafana/elk 数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
+数据目录优先级为：startup.sh 第一个参数 > 已导出的 `DOCKER_VOLUME` > 根 `.env` 的 `DOCKER_VOLUME` > 平台默认值。平台默认值在 Linux 为 `/docker/glseven`，在 macOS 为 `$HOME/docker/glseven`（macOS 根卷只读，不能使用 `/docker`）。也可显式指定：`bash startup.sh /data/glseven`。Linux 上需 root/sudo 执行（脚本将 nexus3/prometheus/grafana/elk 数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
 
 修改 `REDIS_PASSWORD` 后需同时重建 redis 与 moontv：重新执行 `bash startup.sh` 即可。
 

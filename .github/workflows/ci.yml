@@ -36,6 +36,9 @@ jobs:
       - name: Prepare Compose environment
         run: cp .env.example .env
 
+      - name: Test Docker volume resolution
+        run: bash .github/scripts/test-docker-volume.sh
+
       - name: Validate Compose files
         shell: bash
         run: |

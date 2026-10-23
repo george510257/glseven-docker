@@ -9,8 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 常用命令
 
 ```bash
-cp .env.example .env          # 首次必需；为 DOCKER_VOLUME / REDIS_PASSWORD 插值提供来源
-bash startup.sh [数据目录]     # 默认 /docker/glseven；Linux 上需 root/sudo
+cp .env.example .env          # 首次必需；为 REDIS_PASSWORD 等插值提供来源，DOCKER_VOLUME 可选
+bash startup.sh [数据目录]     # Linux 默认 /docker/glseven；macOS 默认 $HOME/docker/glseven
 bash shutdown.sh              # 按启动批次逆序停止，并移除 glseven 网络
 ```
 

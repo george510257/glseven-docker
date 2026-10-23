@@ -2,10 +2,16 @@
 
 set -e
 
-# DOCKER_VOLUME 外部传入，默认值为 /docker/glseven
-export DOCKER_VOLUME=${1:-/docker/glseven}
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common/docker-volume.sh
+source "$SCRIPT_DIR/common/docker-volume.sh"
+
+# 优先级：位置参数 > 已导出的 DOCKER_VOLUME > 根 .env > 平台默认值。
+# macOS 根卷只读，因此无配置时落在 $HOME/docker/glseven，而不是 /docker。
+export DOCKER_VOLUME="$(
+  resolve_docker_volume "$SCRIPT_DIR" "${1:-}" "$(uname -s)" "$HOME"
+)"
+
 # shellcheck source=common/compose-list.sh
 source "$SCRIPT_DIR/common/compose-list.sh"
 # shellcheck source=common/preflight.sh
