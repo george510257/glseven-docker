@@ -260,9 +260,89 @@ run_next_version_tests() {
   printf 'next-version tests: OK\n'
 }
 
+run_release_notes_tests() {
+  local output
+
+  new_repo
+  init_v1
+  commit_file "feat(portal): 增加统一入口"
+  commit_file "fix(ci): 修复发布脚本"
+  commit_file "perf(portal): 加速静态页面"
+  commit_file "refactor(ci): 整理发布步骤"
+  commit_file "docs: 更新使用说明"
+  commit_file "chore: 调整构建命令"
+  git tag -a v1.1.0 -m "v1.1.0"
+  output="$(
+    GITHUB_SERVER_URL="https://github.example" \
+      bash "$RELEASE_NOTES" \
+        --from v1.0.0 \
+        --to v1.1.0 \
+        --repository owner/repo
+  )"
+  assert_contains "$output" "发布日期：" "release date"
+  assert_contains "$output" "## 功能" "feature heading"
+  assert_contains "$output" "feat(portal): 增加统一入口" "feature entry"
+  assert_contains "$output" "## 修复" "fix heading"
+  assert_contains "$output" "fix(ci): 修复发布脚本" "fix entry"
+  assert_contains "$output" "## 优化" "optimization heading"
+  assert_contains "$output" "perf(portal): 加速静态页面" "perf entry"
+  assert_contains "$output" "refactor(ci): 整理发布步骤" "refactor entry"
+  assert_contains "$output" "## 文档" "docs heading"
+  assert_contains "$output" "## 其他" "other heading"
+  assert_contains "$output" "https://github.example/owner/repo/commit/" "commit link"
+  assert_contains "$output" "https://github.example/owner/repo/compare/v1.0.0...v1.1.0" "compare link"
+
+  new_repo
+  init_v1
+  commit_file $'chore: 调整内部结构\n\nBREAKING CHANGE: 配置格式不再兼容'
+  git tag -a v2.0.0 -m "v2.0.0"
+  output="$(
+    bash "$RELEASE_NOTES" \
+      --from v1.0.0 \
+      --to v2.0.0 \
+      --repository owner/repo
+  )"
+  assert_contains "$output" "## 破坏性变更" "breaking heading"
+  assert_contains "$output" "chore: 调整内部结构" "breaking entry"
+
+  new_repo
+  init_v1
+  commit_file "docs: 仅文档变更"
+  git tag -a v1.0.1 -m "v1.0.1"
+  output="$(
+    bash "$RELEASE_NOTES" \
+      --from v1.0.0 \
+      --to v1.0.1 \
+      --repository owner/repo
+  )"
+  assert_contains "$output" "## 文档" "docs-only heading"
+  assert_contains "$output" "docs: 仅文档变更" "docs-only entry"
+
+  new_repo
+  commit_file "chore: init"
+  commit_file "feat(ci): 初始化自动发布"
+  output="$(
+    bash "$RELEASE_NOTES" \
+      --from "" \
+      --to v0.1.0 \
+      --repository owner/repo
+  )"
+  assert_contains "$output" "初始版本 v0.1.0" "initial release entry"
+  assert_contains "$output" "https://github.com/owner/repo/commits/v0.1.0" "initial release link"
+
+  printf 'release-notes tests: OK\n'
+}
+
 case "${1:-all}" in
-  next-version|all)
+  next-version)
     run_next_version_tests
+    ;;
+  release-notes)
+    run_release_notes_tests
+    ;;
+  all)
+    run_next_version_tests
+    run_release_notes_tests
     ;;
   *)
     fail "unknown test group: $1"
