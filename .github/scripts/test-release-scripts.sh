@@ -51,15 +51,21 @@ assert_section_order() {
   assert_eq "$actual" "$expected" "section order"
 }
 
-assert_missing_value() {
-  local option="$1"
-  shift
+assert_cli_failure() {
+  local context="$1"
+  local expected="$2"
+  shift 2
   local status=0
   local stderr=""
   stderr="$("$BASH_UNDER_TEST" "$RELEASE_NOTES" "$@" 2>&1 >/dev/null)" || status=$?
-  [[ "$status" -ne 0 ]] || fail "$option missing value: expected nonzero exit"
-  assert_eq "$stderr" "missing value for $option" "$option missing value stderr"
-  assert_eq "$status" "2" "$option missing value status"
+  assert_eq "$stderr" "$expected" "$context stderr"
+  assert_eq "$status" "2" "$context status"
+}
+
+assert_missing_value() {
+  local option="$1"
+  shift
+  assert_cli_failure "$option missing value" "missing value for $option" "$@"
 }
 
 new_repo() {
@@ -294,7 +300,8 @@ run_release_notes_tests() {
   local output breaking_hash feat_hash fix_hash perf_hash refactor_hash docs_hash chore_hash
   local body_breaking_hash docs_only_hash
   local base_branch merge_feature_hash merge_parents
-  local untagged_hash expected_date
+  local untagged_hash tagged_init_hash tagged_feature_hash
+  local initial_init_hash initial_feature_hash expected_date
 
   assert_missing_value --from --from
   assert_missing_value --to --to
@@ -302,6 +309,9 @@ run_release_notes_tests() {
   assert_missing_value --from --from --to
   assert_missing_value --to --to --repository
   assert_missing_value --repository --repository --to
+  assert_cli_failure "unknown argument" "unknown argument: --bogus" --bogus
+  assert_cli_failure "missing required --to" "missing --to" --repository owner/repo
+  assert_cli_failure "missing required --repository" "missing --repository" --to v1.0.0
 
   new_repo
   init_v1
@@ -320,6 +330,7 @@ run_release_notes_tests() {
   commit_file "chore: 调整构建命令"
   chore_hash="$(git rev-parse HEAD)"
   git tag -a v1.1.0 -m "v1.1.0"
+  commit_file "feat(later): should be excluded"
   output="$(
     GITHUB_SERVER_URL="https://github.example/" \
       "$BASH_UNDER_TEST" "$RELEASE_NOTES" \
@@ -344,6 +355,8 @@ run_release_notes_tests() {
   assert_contains "$output" $'## 其他\n- chore: 调整构建命令 (' "other entry"
   assert_contains "$output" "- chore: 调整构建命令 ([${chore_hash:0:7}](https://github.example/owner/repo/commit/$chore_hash))" "other entry hash"
   assert_contains "$output" "https://github.example/owner/repo/compare/v1.0.0...v1.1.0" "compare link"
+  assert_not_contains "$output" "chore: init" "tagged target pre-from exclusion"
+  assert_not_contains "$output" "feat(later): should be excluded" "tagged target post-tag exclusion"
   assert_not_contains "$output" "github.example//owner" "single-slash server URL"
   assert_section_order "$output" "## 破坏性变更|## 功能|## 修复|## 优化|## 文档|## 其他|## 完整变更"
 
@@ -430,18 +443,47 @@ run_release_notes_tests() {
   )"
   assert_contains "$output" "- feat(ci): 未打标签的发布 ([${untagged_hash:0:7}](https://github.com/owner/repo/commit/$untagged_hash))" "untagged target entry"
   assert_contains "$output" "https://github.com/owner/repo/compare/v1.0.0...v1.0.1" "untagged target compare link"
+  assert_not_contains "$output" "chore: init" "untagged target pre-from exclusion"
+  assert_section_order "$output" "## 功能|## 完整变更"
 
   new_repo
   commit_file "chore: init"
+  tagged_init_hash="$(git rev-parse HEAD)"
   commit_file "feat(ci): 初始化自动发布"
+  tagged_feature_hash="$(git rev-parse HEAD)"
+  git tag -a v0.1.0 -m "v0.1.0"
+  commit_file "feat(later): should be excluded"
   output="$(
     "$BASH_UNDER_TEST" "$RELEASE_NOTES" \
       --from "" \
       --to v0.1.0 \
       --repository owner/repo
   )"
+  assert_contains "$output" $'## 功能\n- feat(ci): 初始化自动发布 (' "tagged initial feature entry"
+  assert_contains "$output" "- feat(ci): 初始化自动发布 ([${tagged_feature_hash:0:7}](https://github.com/owner/repo/commit/$tagged_feature_hash))" "tagged initial feature hash"
+  assert_contains "$output" $'## 其他\n- chore: init (' "tagged initial init entry"
+  assert_contains "$output" "- chore: init ([${tagged_init_hash:0:7}](https://github.com/owner/repo/commit/$tagged_init_hash))" "tagged initial init hash"
+  assert_not_contains "$output" "feat(later): should be excluded" "tagged initial post-tag exclusion"
+  assert_section_order "$output" "## 功能|## 其他|## 完整变更"
+
+  new_repo
+  commit_file "chore: init"
+  initial_init_hash="$(git rev-parse HEAD)"
+  commit_file "feat(ci): 初始化自动发布"
+  initial_feature_hash="$(git rev-parse HEAD)"
+  output="$(
+    "$BASH_UNDER_TEST" "$RELEASE_NOTES" \
+      --from "" \
+      --to v0.1.0 \
+      --repository owner/repo
+  )"
+  assert_contains "$output" $'## 功能\n- feat(ci): 初始化自动发布 (' "initial feature entry"
+  assert_contains "$output" "- feat(ci): 初始化自动发布 ([${initial_feature_hash:0:7}](https://github.com/owner/repo/commit/$initial_feature_hash))" "initial feature hash"
+  assert_contains "$output" $'## 其他\n- chore: init (' "initial init entry"
+  assert_contains "$output" "- chore: init ([${initial_init_hash:0:7}](https://github.com/owner/repo/commit/$initial_init_hash))" "initial init hash"
   assert_contains "$output" "初始版本 v0.1.0" "initial release entry"
   assert_contains "$output" "https://github.com/owner/repo/commits/v0.1.0" "initial release link"
+  assert_section_order "$output" "## 功能|## 其他|## 完整变更"
 
   printf 'release-notes tests: OK\n'
 }
