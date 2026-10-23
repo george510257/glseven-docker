@@ -381,13 +381,26 @@ run_release_notes_tests() {
 
   new_repo
   init_v1
+  commit_file $'plain non conventional subject\n\nBREAKING CHANGE: incompatible'
+  git tag -a v1.0.1 -m "v1.0.1"
+  output="$(
+    "$BASH_UNDER_TEST" "$RELEASE_NOTES" \
+      --from v1.0.0 \
+      --to v1.0.1 \
+      --repository owner/repo
+  )"
+  assert_not_contains "$output" "## 破坏性变更" "non-conventional breaking heading omitted"
+  assert_not_contains "$output" "plain non conventional subject" "non-conventional breaking subject omitted"
+
+  new_repo
+  init_v1
   base_branch="$(git symbolic-ref --short HEAD)"
   git checkout -q -b merge-topic
   commit_file "feat(merge): 合并分支功能"
   merge_feature_hash="$(git rev-parse HEAD)"
   commit_file "plain subject without conventional prefix"
   git checkout -q "$base_branch"
-  git merge -q --no-ff -m "Merge branch 'merge-topic'" merge-topic
+  git merge -q --no-ff -m "feat(merge): conventional merge subject" merge-topic
   merge_parents="$(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ')"
   assert_eq "$merge_parents" "3" "real merge commit"
   git tag -a v1.0.1 -m "v1.0.1"
@@ -399,7 +412,7 @@ run_release_notes_tests() {
   )"
   assert_contains "$output" "- feat(merge): 合并分支功能 ([${merge_feature_hash:0:7}](https://github.com/owner/repo/commit/$merge_feature_hash))" "merge fixture feature entry"
   assert_not_contains "$output" "plain subject without conventional prefix" "plain subject excluded"
-  assert_not_contains "$output" "Merge branch 'merge-topic'" "merge subject excluded"
+  assert_not_contains "$output" "feat(merge): conventional merge subject" "conventional merge subject excluded"
   assert_section_order "$output" "## 功能|## 完整变更"
 
   new_repo

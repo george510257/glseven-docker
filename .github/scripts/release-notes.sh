@@ -68,7 +68,7 @@ server="${server%/}"
 
 printf '发布日期：%s\n\n' "$(TZ=Asia/Shanghai date +%Y-%m-%d)"
 
-git log --reverse --format='%H%x1f%s%x1f%b%x1e' "$commit_range" |
+git log --reverse --format='%H%x1f%P%x1f%s%x1f%b%x1e' "$commit_range" |
   awk -v server="$server" -v repo="$repository" -v from="$from" -v to="$to" '
     function section(title, entries, count, i) {
       if (count == 0) return
@@ -92,12 +92,16 @@ git log --reverse --format='%H%x1f%s%x1f%b%x1e' "$commit_range" |
       hash = $1
       sub(/^[[:space:]]+/, "", hash)
       sub(/[[:space:]]+$/, "", hash)
-      subject = $2
-      body = $3
+      parents = $2
+      subject = $3
+      body = $4
       if (hash == "") next
+      if (split(parents, parent_hashes, " ") > 1) next
 
       commit_url = server "/" repo "/commit/" hash
       link = "- " subject " ([" substr(hash, 1, 7) "](" commit_url "))"
+      conventional = (subject ~ /^[A-Za-z]+(\([^)]*\))?!?:/)
+      if (!conventional) next
       breaking = (body ~ /(^|\n)BREAKING CHANGE: /) ||
                  (subject ~ /^[A-Za-z]+(\([^)]*\))?!:/)
 
