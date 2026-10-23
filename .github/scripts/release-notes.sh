@@ -8,7 +8,7 @@ repository=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --from)
-      [[ $# -ge 2 ]] || {
+      [[ $# -ge 2 && "$2" != --* ]] || {
         printf 'missing value for --from\n' >&2
         exit 2
       }
@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --to)
-      [[ $# -ge 2 ]] || {
+      [[ $# -ge 2 && "$2" != --* ]] || {
         printf 'missing value for --to\n' >&2
         exit 2
       }
@@ -24,7 +24,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --repository)
-      [[ $# -ge 2 ]] || {
+      [[ $# -ge 2 && "$2" != --* ]] || {
         printf 'missing value for --repository\n' >&2
         exit 2
       }
