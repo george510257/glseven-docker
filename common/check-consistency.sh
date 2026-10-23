@@ -112,10 +112,10 @@ fi
 
 if [[ "$issues" -eq 0 ]]; then
   echo "  consistency: OK（$(echo "$services" | wc -l | tr -d ' ') 个服务的门户/代理/hosts 同步点齐全）"
+elif [[ "$strict" == true ]]; then
+  echo "  consistency: $issues 项待同步（strict 模式，校验失败）"
+  exit 1
 else
   echo "  consistency: $issues 项待同步（仅告警，不阻断启动）"
-  if [[ "$strict" == true ]]; then
-    exit 1
-  fi
 fi
 exit 0
