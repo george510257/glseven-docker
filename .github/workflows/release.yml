@@ -38,6 +38,36 @@ jobs:
           printf '%s\n' "$output"
           printf '%s\n' "$output" >> "$GITHUB_OUTPUT"
 
+      - name: Guard previous release state
+        id: previous_release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_ON_HEAD: ${{ steps.version.outputs.tag_on_head }}
+        run: |
+          set -euo pipefail
+
+          latest_tag="$(
+            git tag --merged HEAD --list 'v*' --sort=-v:refname |
+              awk '/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/ { print; exit }'
+          )"
+
+          if [[ -z "$latest_tag" || "$TAG_ON_HEAD" == "true" ]]; then
+            exit 0
+          fi
+
+          if response="$(gh api \
+            "repos/$GITHUB_REPOSITORY/releases/tags/$latest_tag" 2>&1)"; then
+            exit 0
+          fi
+
+          if [[ "$response" =~ (^|[^0-9])HTTP[[:space:]]404([^0-9]|$) ]]; then
+            printf 'Latest tag %s has no GitHub Release; rerun its original release workflow before releasing newer changes.\n' "$latest_tag" >&2
+          else
+            printf '%s\n' "$response" >&2
+          fi
+          exit 1
+
       - name: Generate release notes
         if: steps.version.outputs.release == 'true'
         shell: bash
@@ -71,14 +101,20 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          if gh release view "$VERSION" >/dev/null 2>&1; then
+          if response="$(gh api \
+            "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" 2>&1)"; then
             echo "GitHub Release $VERSION already exists"
             exit 0
           fi
-          gh release create "$VERSION" \
-            --verify-tag \
-            --title "$VERSION" \
-            --notes-file /tmp/release-notes.md
+          if [[ "$response" =~ (^|[^0-9])HTTP[[:space:]]404([^0-9]|$) ]]; then
+            gh release create "$VERSION" \
+              --verify-tag \
+              --title "$VERSION" \
+              --notes-file /tmp/release-notes.md
+          else
+            printf '%s\n' "$response" >&2
+            exit 1
+          fi
 
       - name: Report skipped release
         if: steps.version.outputs.release != 'true'
