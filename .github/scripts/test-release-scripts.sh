@@ -261,16 +261,31 @@ run_next_version_tests() {
 }
 
 run_release_notes_tests() {
-  local output
+  local output feat_hash fix_hash perf_hash refactor_hash docs_hash chore_hash expected_date
+  local option status stderr
+
+  for option in --from --to --repository; do
+    status=0
+    stderr="$(bash "$RELEASE_NOTES" "$option" 2>&1 >/dev/null)" || status=$?
+    [[ "$status" -ne 0 ]] || fail "$option missing value: expected nonzero exit"
+    assert_eq "$stderr" "missing value for $option" "$option missing value stderr"
+    assert_eq "$status" "2" "$option missing value status"
+  done
 
   new_repo
   init_v1
   commit_file "feat(portal): 增加统一入口"
+  feat_hash="$(git rev-parse HEAD)"
   commit_file "fix(ci): 修复发布脚本"
+  fix_hash="$(git rev-parse HEAD)"
   commit_file "perf(portal): 加速静态页面"
+  perf_hash="$(git rev-parse HEAD)"
   commit_file "refactor(ci): 整理发布步骤"
+  refactor_hash="$(git rev-parse HEAD)"
   commit_file "docs: 更新使用说明"
+  docs_hash="$(git rev-parse HEAD)"
   commit_file "chore: 调整构建命令"
+  chore_hash="$(git rev-parse HEAD)"
   git tag -a v1.1.0 -m "v1.1.0"
   output="$(
     GITHUB_SERVER_URL="https://github.example" \
@@ -279,17 +294,20 @@ run_release_notes_tests() {
         --to v1.1.0 \
         --repository owner/repo
   )"
-  assert_contains "$output" "发布日期：" "release date"
+  expected_date="$(TZ=Asia/Shanghai date +%Y-%m-%d)"
+  assert_contains $'\n'"$output" $'\n'"发布日期：$expected_date"$'\n' "release date"
   assert_contains "$output" "## 功能" "feature heading"
-  assert_contains "$output" "feat(portal): 增加统一入口" "feature entry"
+  assert_contains "$output" "- feat(portal): 增加统一入口 ([${feat_hash:0:7}](https://github.example/owner/repo/commit/$feat_hash))" "feature entry hash"
   assert_contains "$output" "## 修复" "fix heading"
-  assert_contains "$output" "fix(ci): 修复发布脚本" "fix entry"
+  assert_contains "$output" "- fix(ci): 修复发布脚本 ([${fix_hash:0:7}](https://github.example/owner/repo/commit/$fix_hash))" "fix entry hash"
   assert_contains "$output" "## 优化" "optimization heading"
-  assert_contains "$output" "perf(portal): 加速静态页面" "perf entry"
-  assert_contains "$output" "refactor(ci): 整理发布步骤" "refactor entry"
+  assert_contains "$output" "- perf(portal): 加速静态页面 ([${perf_hash:0:7}](https://github.example/owner/repo/commit/$perf_hash))" "perf entry hash"
+  assert_contains "$output" "- refactor(ci): 整理发布步骤 ([${refactor_hash:0:7}](https://github.example/owner/repo/commit/$refactor_hash))" "refactor entry hash"
   assert_contains "$output" "## 文档" "docs heading"
+  assert_contains "$output" "- docs: 更新使用说明 ([${docs_hash:0:7}](https://github.example/owner/repo/commit/$docs_hash))" "docs entry hash"
   assert_contains "$output" "## 其他" "other heading"
-  assert_contains "$output" "https://github.example/owner/repo/commit/" "commit link"
+  assert_contains "$output" $'## 其他\n- chore: 调整构建命令 (' "other entry"
+  assert_contains "$output" "- chore: 调整构建命令 ([${chore_hash:0:7}](https://github.example/owner/repo/commit/$chore_hash))" "other entry hash"
   assert_contains "$output" "https://github.example/owner/repo/compare/v1.0.0...v1.1.0" "compare link"
 
   new_repo

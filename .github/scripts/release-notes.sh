@@ -8,15 +8,27 @@ repository=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --from)
-      from="${2:-}"
+      [[ $# -ge 2 ]] || {
+        printf 'missing value for --from\n' >&2
+        exit 2
+      }
+      from="$2"
       shift 2
       ;;
     --to)
-      to="${2:-}"
+      [[ $# -ge 2 ]] || {
+        printf 'missing value for --to\n' >&2
+        exit 2
+      }
+      to="$2"
       shift 2
       ;;
     --repository)
-      repository="${2:-}"
+      [[ $# -ge 2 ]] || {
+        printf 'missing value for --repository\n' >&2
+        exit 2
+      }
+      repository="$2"
       shift 2
       ;;
     *)
@@ -78,6 +90,8 @@ git log --reverse --format='%H%x1f%s%x1f%b%x1e' "$commit_range" |
 
     {
       hash = $1
+      sub(/^[[:space:]]+/, "", hash)
+      sub(/[[:space:]]+$/, "", hash)
       subject = $2
       body = $3
       if (hash == "") next
