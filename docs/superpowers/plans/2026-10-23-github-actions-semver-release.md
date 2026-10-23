@@ -8,7 +8,7 @@
 
 **Tech Stack:** GitHub Actions、Bash 3.2+ 兼容语法、Git、GitHub CLI (`gh`)、Docker Compose v2、Python 3 + PyYAML（仅本地 workflow 语法校验）
 
-> **Historical implementation plan / as-built boundary:** 本文保留原始任务步骤、执行历史和部分代码快照。除明确标注 **as-built verified** 的章节外，代码块仅用于说明当时的实现，不是当前实现的复制来源；不得直接照抄。实际基线为已发布 `origin/main` 的 `a132f97`。当前 pending range 为 `a132f97..987e91f`；在该快照中包含四个提交：`1ea301c`、`1e8fadf`、`cab6a93`、`987e91f`。后续任何文档修正提交都会扩展该范围，执行时以 `git log a132f97..HEAD` 为准，不硬编码总数。权威来源始终是当前分支中的 `.github/scripts/next-version.sh`、`.github/scripts/release-notes.sh`、`.github/scripts/test-release-scripts.sh`、`.github/workflows/ci.yml` 和 `.github/workflows/release.yml`。
+> **Historical implementation plan / as-built boundary:** 本文保留原始任务步骤、执行历史和部分代码快照。除明确标注 **as-built verified** 的章节外，代码块仅用于说明当时的实现，不是当前实现的复制来源；不得直接照抄。实际基线为已发布 `origin/main` 的 `a132f97`。当前 pending range 为 `a132f97..HEAD`，执行时以 `git log a132f97..HEAD` 为动态来源。历史快照 `a132f97..987e91f` 包含四个提交：`1ea301c`、`1e8fadf`、`cab6a93`、`987e91f`；当前分支到 `15b7c2d` 时已扩展为五个提交（包含 `15b7c2d`），本次修正提交会继续扩展范围，因此不硬编码 HEAD 的提交总数。权威来源始终是当前分支中的 `.github/scripts/next-version.sh`、`.github/scripts/release-notes.sh`、`.github/scripts/test-release-scripts.sh`、`.github/workflows/ci.yml` 和 `.github/workflows/release.yml`。
 
 本节以下的 checkbox 是历史执行记录，不表示当前是否已完成。
 
@@ -18,7 +18,9 @@
 | `1ea301c`、`1e8fadf` | 在当前修复分支，待 PR；未合并、未发布 |
 | `cab6a93` | Task 6 文档同步，待随修复分支推送 |
 | `987e91f` | 后续发布与回填文档，待随修复分支推送 |
-| `a132f97..987e91f` | 该快照包含上述四个 pending 提交 |
+| `15b7c2d` | 发布与回填步骤加固，待随修复分支推送 |
+| `a132f97..HEAD` | 当前 pending range；用 `git log a132f97..HEAD` 获取动态内容，本修正提交会扩展范围 |
+| `a132f97..987e91f` | 历史快照，仅包含四个 pending 提交 |
 | `v1.1.1` | 预期后续版本；发布 runbook 待执行 |
 
 ---
@@ -849,7 +851,7 @@ Expected:
 
 ## 后续修复发布 runbook（预期 v1.1.1）
 
-> **状态：PENDING，尚未执行。** 在 `987e91f` 快照，pending range `a132f97..987e91f` 包含四个提交：`1ea301c`、`1e8fadf`、`cab6a93`、`987e91f`；任何后续文档修正提交都会扩展该范围，执行时以当前 `git log a132f97..HEAD` 为准。`1ea301c`、`1e8fadf` 仍未合并或发布。基于 `v1.1.0` 运行 `bash .github/scripts/next-version.sh` 当前得到 `version=v1.1.1`、`previous_tag=v1.1.0`、`bump=patch`；merge commit 不参与分类，普通 `fix` / `ci` 提交参与。
+> **状态：PENDING，尚未执行。** 当前 pending range 为 `a132f97..HEAD`，执行时以 `git log a132f97..HEAD` 为准。历史快照 `a132f97..987e91f` 包含四个提交：`1ea301c`、`1e8fadf`、`cab6a93`、`987e91f`；到 `15b7c2d` 时范围已包含五个提交，本次修正提交会继续扩展，因此不硬编码 HEAD 总数。`1ea301c`、`1e8fadf` 仍未合并或发布。基于 `v1.1.0` 运行 `bash .github/scripts/next-version.sh` 当前得到 `version=v1.1.1`、`previous_tag=v1.1.0`、`bump=patch`；merge commit 不参与分类，普通 `fix` / `ci` 提交参与。
 
 以下步骤在同一 Bash session 中按顺序执行。每个 sequence block 都启用 `set -euo pipefail`；PR checks、merge、run lookup 或 watch 任一步失败，后续命令不会继续。
 
@@ -1069,8 +1071,9 @@ done
   exit 1
 }
 gh run watch "$dry_release_run" --exit-status
+# 非 quiet 模式会消费完整 stdin，避免 pipefail 下提前关闭管道。
 if gh run view "$dry_release_run" --log |
-  rg -q 'No releasable Conventional Commits found; skipping release\.'; then
+  rg 'No releasable Conventional Commits found; skipping release\.' >/dev/null; then
   echo "docs-only release correctly skipped"
 else
   echo "docs-only release did not report a skip" >&2
@@ -1084,7 +1087,7 @@ if git rev-parse -q --verify refs/tags/v1.1.2 >/dev/null; then
 fi
 ```
 
-Expected: run 成功且输出跳过 release；`next-version.sh` 返回 `release=false` 语义；没有 `v1.1.2` 或新 Release。若需要删除 dry-run 文件，使用另一条 docs-only PR，同样不应产生版本。
+Expected: run 成功且输出跳过 release；`rg` 匹配返回 `0`，无匹配返回 `1` 并进入失败分支，不出现假 `141`；`next-version.sh` 返回 `release=false` 语义；没有 `v1.1.2` 或新 Release。若需要删除 dry-run 文件，使用另一条 docs-only PR，同样不应产生版本。
 
 ---
 
