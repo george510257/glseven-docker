@@ -16,31 +16,42 @@ head_tag="$(
 )"
 
 if [[ -n "$head_tag" ]]; then
-  head_commit="$(git rev-parse "$head_tag^{commit}")"
   previous_tag="$(
-    git tag --merged "$head_tag" --list 'v*' --sort=-v:refname |
-      awk '/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/' |
-      while IFS= read -r tag; do
-        if [[ "$(git rev-parse "$tag^{commit}")" == "$head_commit" ]]; then
-          continue
-        fi
-        printf '%s\n' "$tag"
-        break
-      done
+    git tag --merged "$head_tag" --list 'v*' |
+      awk -v head_tag="$head_tag" '
+        function parse_version(tag, parts, value) {
+          if (tag !~ /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/) {
+            return 0
+          }
+          value = substr(tag, 2)
+          split(value, parts, ".")
+          return 1
+        }
+        function compare_versions(left, right, i) {
+          for (i = 1; i <= 3; i++) {
+            if ((left[i] + 0) < (right[i] + 0)) return -1
+            if ((left[i] + 0) > (right[i] + 0)) return 1
+          }
+          return 0
+        }
+        BEGIN {
+          parse_version(head_tag, head_version)
+          found = 0
+        }
+        {
+          if (!parse_version($0, candidate)) next
+          if (compare_versions(candidate, head_version) >= 0) next
+          if (!found || compare_versions(candidate, best_version) > 0) {
+            best = $0
+            for (i = 1; i <= 3; i++) best_version[i] = candidate[i]
+            found = 1
+          }
+        }
+        END {
+          if (found) print best
+        }
+      '
   )"
-  if [[ -z "$previous_tag" ]]; then
-    previous_tag="$(
-      git tag --merged "$head_tag" --list 'v*' --sort=v:refname |
-        awk '/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/' |
-        while IFS= read -r tag; do
-          if [[ "$tag" != "$head_tag" &&
-                "$(git rev-parse "$tag^{commit}")" == "$head_commit" ]]; then
-            printf '%s\n' "$tag"
-            break
-          fi
-        done
-    )"
-  fi
   printf 'release=true\n'
   printf 'version=%s\n' "$head_tag"
   printf 'tag_on_head=true\n'

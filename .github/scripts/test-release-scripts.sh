@@ -154,6 +154,19 @@ run_next_version_tests() {
   assert_version_field "$output" release true
   assert_version_field "$output" version v1.10.0
   assert_version_field "$output" tag_on_head true
+  assert_version_field "$output" previous_tag v1.9.0
+  assert_version_field "$output" bump none
+
+  new_repo
+  init_v1
+  commit_file "feat(ci): 准备 v1.10.0"
+  git tag -a v1.10.0 -m "v1.10.0"
+  commit_file "fix(ci): 回退到 v1.9.0"
+  git tag -a v1.9.0 -m "v1.9.0"
+  output="$(bash "$NEXT_VERSION")"
+  assert_version_field "$output" release true
+  assert_version_field "$output" version v1.9.0
+  assert_version_field "$output" tag_on_head true
   assert_version_field "$output" previous_tag v1.0.0
   assert_version_field "$output" bump none
 
