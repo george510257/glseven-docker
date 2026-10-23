@@ -214,6 +214,37 @@ run_next_version_tests() {
 
   new_repo
   init_v1
+  base_branch="$(git symbolic-ref --short HEAD)"
+  git checkout -q -b docs-ci-topic
+  commit_file "docs: 仅更新说明"
+  commit_file "ci: 仅调整校验"
+  git checkout -q "$base_branch"
+  git merge -q --no-ff -m "feat(merge): 合并普通修正" docs-ci-topic
+  assert_eq "$(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ')" "3" "docs/ci merge has two parents"
+  output="$("$BASH_UNDER_TEST" "$NEXT_VERSION")"
+  assert_version_field "$output" release false
+  assert_version_field "$output" version ""
+  assert_version_field "$output" tag_on_head false
+  assert_version_field "$output" previous_tag v1.0.0
+  assert_version_field "$output" bump none
+
+  new_repo
+  init_v1
+  base_branch="$(git symbolic-ref --short HEAD)"
+  git checkout -q -b feature-topic
+  commit_file "feat(ci): 增加发布能力"
+  git checkout -q "$base_branch"
+  git merge -q --no-ff -m "docs: 合并功能分支" feature-topic
+  assert_eq "$(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ')" "3" "feature merge has two parents"
+  output="$("$BASH_UNDER_TEST" "$NEXT_VERSION")"
+  assert_version_field "$output" release true
+  assert_version_field "$output" version v1.1.0
+  assert_version_field "$output" tag_on_head false
+  assert_version_field "$output" previous_tag v1.0.0
+  assert_version_field "$output" bump minor
+
+  new_repo
+  init_v1
   git tag -a v1.2.3-rc.1 -m "v1.2.3-rc.1"
   git tag -a v1.2.3+build -m "v1.2.3+build"
   git tag -a v01.2.3 -m "v01.2.3"
