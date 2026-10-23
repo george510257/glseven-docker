@@ -116,6 +116,16 @@ run_next_version_tests() {
 
   new_repo
   init_v1
+  commit_file "BREAKING CHANGE: 配置格式不再兼容"
+  output="$(bash "$NEXT_VERSION")"
+  assert_version_field "$output" release false
+  assert_version_field "$output" version ""
+  assert_version_field "$output" tag_on_head false
+  assert_version_field "$output" previous_tag v1.0.0
+  assert_version_field "$output" bump none
+
+  new_repo
+  init_v1
   commit_file "docs: 更新说明"
   commit_file "ci: 调整校验"
   output="$(bash "$NEXT_VERSION")"
@@ -134,6 +144,26 @@ run_next_version_tests() {
   assert_version_field "$output" version v1.0.1
   assert_version_field "$output" tag_on_head true
   assert_version_field "$output" previous_tag v1.0.0
+  assert_version_field "$output" bump none
+
+  new_repo
+  init_v1
+  git tag -a v1.9.0 -m "v1.9.0"
+  git tag -a v1.10.0 -m "v1.10.0"
+  output="$(bash "$NEXT_VERSION")"
+  assert_version_field "$output" release true
+  assert_version_field "$output" version v1.10.0
+  assert_version_field "$output" tag_on_head true
+  assert_version_field "$output" previous_tag v1.0.0
+  assert_version_field "$output" bump none
+
+  new_repo
+  init_v1
+  output="$(bash "$NEXT_VERSION")"
+  assert_version_field "$output" release true
+  assert_version_field "$output" version v1.0.0
+  assert_version_field "$output" tag_on_head true
+  assert_version_field "$output" previous_tag ""
   assert_version_field "$output" bump none
 
   new_repo

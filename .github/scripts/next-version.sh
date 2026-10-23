@@ -16,10 +16,31 @@ head_tag="$(
 )"
 
 if [[ -n "$head_tag" ]]; then
+  head_commit="$(git rev-parse "$head_tag^{commit}")"
   previous_tag="$(
-    printf '%s\n' "$tags" |
-      awk -v current="$head_tag" 'NF && $0 != current { print; exit }'
+    git tag --merged "$head_tag" --list 'v*' --sort=-v:refname |
+      awk '/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/' |
+      while IFS= read -r tag; do
+        if [[ "$(git rev-parse "$tag^{commit}")" == "$head_commit" ]]; then
+          continue
+        fi
+        printf '%s\n' "$tag"
+        break
+      done
   )"
+  if [[ -z "$previous_tag" ]]; then
+    previous_tag="$(
+      git tag --merged "$head_tag" --list 'v*' --sort=v:refname |
+        awk '/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/' |
+        while IFS= read -r tag; do
+          if [[ "$tag" != "$head_tag" &&
+                "$(git rev-parse "$tag^{commit}")" == "$head_commit" ]]; then
+            printf '%s\n' "$tag"
+            break
+          fi
+        done
+    )"
+  fi
   printf 'release=true\n'
   printf 'version=%s\n' "$head_tag"
   printf 'tag_on_head=true\n'
@@ -44,8 +65,14 @@ bump="$(
         sub(/^[\r\n]+/, "", body)
         split(body, lines, "\n")
         subject = lines[1]
-        if (subject ~ /^[A-Za-z]+(\([^)]*\))?!:/ ||
-            body ~ /(^|\n)BREAKING CHANGE: /) {
+        breaking_body = 0
+        for (i = 2; i <= length(lines); i++) {
+          if (lines[i] ~ /^BREAKING CHANGE: /) {
+            breaking_body = 1
+            break
+          }
+        }
+        if (subject ~ /^[A-Za-z]+(\([^)]*\))?!:/ || breaking_body) {
           major = 1
         }
         if (subject ~ /^feat(\([^)]*\))?:/) {
