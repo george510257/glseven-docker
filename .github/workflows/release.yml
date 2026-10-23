@@ -1,0 +1,176 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Create tag and release
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(bash .github/scripts/next-version.sh)"
+          printf '%s\n' "$output"
+          printf '%s\n' "$output" >> "$GITHUB_OUTPUT"
+
+      - name: Guard previous release state
+        id: previous_release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_ON_HEAD: ${{ steps.version.outputs.tag_on_head }}
+        run: |
+          set -euo pipefail
+
+          classify_release_api() {
+            local tag="$1"
+            local status=0
+            local response=""
+            local http_status=""
+
+            response="$(gh api --include \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$tag" 2>&1)" ||
+              status=$?
+            http_status="$(
+              printf '%s\n' "$response" |
+                awk '$1 ~ /^HTTP\// && !seen { print $2; seen = 1 }'
+            )"
+
+            if [[ "$status" -eq 0 && "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+              return 0
+            fi
+            if [[ "$status" -ne 0 && "$http_status" == "404" ]]; then
+              return 2
+            fi
+
+            printf '%s\n' "$response" >&2
+            return 1
+          }
+
+          latest_tag="$(
+            git tag --merged HEAD --list 'v*' --sort=-v:refname |
+              awk '/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/ { print; exit }'
+          )"
+
+          if [[ -z "$latest_tag" || "$TAG_ON_HEAD" == "true" ]]; then
+            exit 0
+          fi
+
+          classification=0
+          classify_release_api "$latest_tag" || classification=$?
+          case "$classification" in
+            0)
+              ;;
+            2)
+              printf 'Latest tag %s has no GitHub Release; the missing prior Release must be published before newer versions are released. For legacy tags, backfill it from the annotated tag message.\n' "$latest_tag" >&2
+              exit 1
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+
+      - name: Generate release notes
+        if: steps.version.outputs.release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/release-notes.sh \
+            --from "${{ steps.version.outputs.previous_tag }}" \
+            --to "${{ steps.version.outputs.version }}" \
+            --repository "${{ github.repository }}" \
+            > /tmp/release-notes.md
+
+      - name: Create and push annotated tag
+        if: >-
+          steps.version.outputs.release == 'true' &&
+          steps.version.outputs.tag_on_head != 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$VERSION"
+          git push origin "refs/tags/$VERSION"
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.release == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          classify_release_api() {
+            local tag="$1"
+            local status=0
+            local response=""
+            local http_status=""
+
+            response="$(gh api --include \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$tag" 2>&1)" ||
+              status=$?
+            http_status="$(
+              printf '%s\n' "$response" |
+                awk '$1 ~ /^HTTP\// && !seen { print $2; seen = 1 }'
+            )"
+
+            if [[ "$status" -eq 0 && "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+              return 0
+            fi
+            if [[ "$status" -ne 0 && "$http_status" == "404" ]]; then
+              return 2
+            fi
+
+            printf '%s\n' "$response" >&2
+            return 1
+          }
+
+          classification=0
+          classify_release_api "$VERSION" || classification=$?
+          case "$classification" in
+            0)
+              echo "GitHub Release $VERSION already exists"
+              ;;
+            2)
+              gh release create "$VERSION" \
+                --verify-tag \
+                --title "$VERSION" \
+                --notes-file /tmp/release-notes.md
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
+
+      - name: Report skipped release
+        if: steps.version.outputs.release != 'true'
+        run: echo "No releasable Conventional Commits found; skipping release."

@@ -10,7 +10,7 @@
 #   1. 每个 compose 服务有 portal/conf/{conf.d,stream-conf.d}/<name>.conf（内部服务豁免）
 #   2. 每个 conf.d/*.conf 的 server_name 子域名有对应容器（反查，抓孤立 vhost / 改名遗漏）
 #   3. 有 HTTP 入口的服务在门户 index.html 有卡片、且 README 的 /etc/hosts 清单含其子域名
-# 另：服务的 container_name 与 hostname 必须一致（子域名 = 容器名 约定的前提），
+# 另：服务的 container_name 与 hostname 必须一致（子域名 = 容器名 约定的前提；门户 portal -> nginx 除外），
 # 提取服务清单时即按此过滤，不一致的服务根本不会进入下面的检查（属静默跳过，非断言）。
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,9 +20,10 @@ cd "$SCRIPT_DIR" || exit 0
 PROTOCOL_ONLY="mysql redis mongo rabbitmq kafka etcd openldap ollama filebeat"
 # 有意无门户卡片但确有 HTTP 入口的服务（在 conf.d 里，只是没放导航）。
 NO_CARD_OK="apisix elk"
-# 门户自身：nginx 服务根域 glseven.local（不是二级域名），且是代理方而非被代理方，
-# 三类「应有 conf.d/卡片/hosts 条目」的检查对它都不适用。
+# 门户自身：对外二级域名为 portal.glseven.local，容器名/hostname 仍为 nginx。
+# 门户不检查代理文件名和导航卡片；反查与 hosts 检查按该映射处理。
 PORTAL_SELF="nginx"
+PORTAL_SUBDOMAIN="portal"
 # 内部服务：只在容器网络内提供服务，宿主侧完全不暴露（nginx 里有意不出现），
 # 因此三类检查一并豁免。与 PROTOCOL_ONLY 的区别：后者有 stream 转发到宿主，本类没有。
 # filebeat=日志生产者，无用户界面；keycloak 的 9000 管理端口同理（见 README「仅容器网络内」）。
@@ -62,7 +63,10 @@ done
 # 2) conf.d 里出现的每个 server_name 子域名，都应有同名容器（抓孤立 vhost / 改名后遗留）
 for f in portal/conf/conf.d/*.conf; do
   for sub in $(grep -hoE 'server_name[[:space:]]+[a-z0-9.-]+\.glseven\.local' "$f" | awk '{print $2}' | sed 's/\.glseven\.local$//' | sort -u); do
-    is_in "$sub" "$(echo "$services" | tr '\n' ' ')" || warn "$(basename "$f")：server_name $sub.glseven.local 无同名容器"
+    [[ -z "$sub" ]] && continue
+    expected_sub="$sub"
+    [[ "$sub" == "$PORTAL_SUBDOMAIN" ]] && expected_sub="$PORTAL_SELF"
+    is_in "$expected_sub" "$(echo "$services" | tr '\n' ' ')" || warn "$(basename "$f")：server_name $sub.glseven.local 无对应容器"
   done
 done
 
@@ -76,13 +80,14 @@ for svc in $services; do
 done
 
 # 4) /etc/hosts 初始化清单（README 里的那行命令）应覆盖所有子域名
-hosts_line=$(grep -oE "echo '127\.0\.0\.1 glseven\.local.*glseven\.local'" README.md | head -1)
+hosts_line=$(grep -oE "echo '127\.0\.0\.1 portal\.glseven\.local.*glseven\.local'" README.md | head -1)
 if [[ -n "$hosts_line" ]]; then
   for svc in $services; do
     is_in "$svc" "$PROTOCOL_ONLY" && continue
-    is_in "$svc" "$PORTAL_SELF" && continue
     is_in "$svc" "$INTERNAL_ONLY" && continue
-    [[ "$hosts_line" == *"$svc.glseven.local"* ]] || warn "${svc}：README 的 /etc/hosts 初始化清单缺 $svc.glseven.local（二级域名将不解析）"
+    expected_sub="$svc"
+    [[ "$svc" == "$PORTAL_SELF" ]] && expected_sub="$PORTAL_SUBDOMAIN"
+    [[ "$hosts_line" == *"$expected_sub.glseven.local"* ]] || warn "${svc}：README 的 /etc/hosts 初始化清单缺 $expected_sub.glseven.local（二级域名将不解析）"
   done
 else
   warn "未能从 README.md 定位 /etc/hosts 初始化清单，跳过该项校验"

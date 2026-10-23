@@ -10,18 +10,20 @@
 # 1. 准备环境变量（.env 提供 DOCKER_VOLUME / REDIS_PASSWORD 等插值，无 .env 时使用内置默认值）
 cp .env.example .env
 
-# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 24 个主机名（二级域名 = 容器名，零别名）
-echo '127.0.0.1 glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local iptv.glseven.local' | sudo tee -a /etc/hosts
+# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 24 个主机名（服务二级域名 = 容器名，门户为 portal，零别名）
+echo '127.0.0.1 portal.glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local iptv.glseven.local' | sudo tee -a /etc/hosts
 
 # 3. 启动：BASE 批次 → 等待 MySQL 健康 → DEFERRED 批次 → PORTAL
 bash startup.sh
 
 # 4. 全部入口聚合在导航页（nginx 为唯一持有宿主端口的容器）
-open http://glseven.local:8000
+open http://portal.glseven.local:8000
 
 # 停止：按启动逆序 down 并移除 glseven 网络
 bash shutdown.sh
 ```
+
+存量环境升级时，需在 `/etc/hosts` 追加 `127.0.0.1 portal.glseven.local`。根域条目可以保留，`glseven.local:8000` 会自动 301 到新入口。
 
 数据目录由 startup.sh 的第一个参数指定（默认 `/docker/glseven`）：`bash startup.sh /data/glseven`。Linux 上需 root/sudo 执行（脚本将 nexus3/prometheus/grafana/elk 数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
 
@@ -48,11 +50,11 @@ bash shutdown.sh
 
 ## 服务访问入口
 
-**nginx（portal）是唯一持有宿主端口的容器**（28 个端口：8000 门户 + 11 个原生 http 监听 + 16 条 stream），其余 24 个服务零宿主端口；二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户。
+**nginx（portal）是唯一持有宿主端口的容器**（28 个端口：8000 门户 + 11 个原生 http 监听 + 16 条 stream），其余 24 个服务零宿主端口；门户二级域名固定为 `portal.glseven.local`（容器名仍为 `nginx`），其余服务二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户；根域 `glseven.local:8000` 仅作兼容跳转。
 
 | 服务 | 入口 | 说明 |
 |---|---|---|
-| 导航门户 | http://glseven.local:8000 | 全部入口聚合（nginx 静态页） |
+| 导航门户 | http://portal.glseven.local:8000 | 全部入口聚合（nginx 静态页） |
 | Adminer | http://adminer.glseven.local:8080 | MySQL/Mongo 管理 |
 | mongo-express | http://mongo-express.glseven.local:8081 | MongoDB 管理（凭据见 env） |
 | RabbitMQ 管理 | http://rabbitmq.glseven.local:15672 | AMQP/MQTT 走下方协议端口 |
@@ -62,15 +64,15 @@ bash shutdown.sh
 | XXL-JOB | http://xxl-job-admin.glseven.local:8080/xxl-job-admin/ | 控制台（context-path 保留前缀） |
 | Nexus | http://nexus3.glseven.local:8081 | Web UI（Docker Registry 走 localhost:5000） |
 | Portainer | http://portainer.glseven.local:9000 | 容器管理 |
-| APISIX | http://apisix.glseven.local:9080 | 数据面（Admin API 同域名 :9180，X-API-KEY 见 apisix/conf/config.yaml） |
+| APISIX | http://apisix.glseven.local:9180/ui | Dashboard / Admin API（X-API-KEY 见 apisix/conf/config.yaml）；数据面 :9080 |
 | Prometheus | http://prometheus.glseven.local:9090 | 指标（7 个抓取 job） |
 | Grafana | http://grafana.glseven.local:3000 | 可视化（数据源已 provision） |
 | Kibana | http://elk.glseven.local:5601 | 日志检索（ES API 同域名 :9200） |
-| etcd | http://etcd.glseven.local:2379 | REST/health/metrics（stream TCP 透传，curl 可用） |
+| etcd | http://etcd.glseven.local:2379/health | 健康检查 API（`/version`、`/metrics` 可用；stream TCP 透传） |
 | Ollama | http://ollama.glseven.local:11434 | API 状态页（stream TCP 透传） |
 | Open WebUI | http://open-webui.glseven.local:8080 | LLM 对话 |
 | MoonTV | http://moontv.glseven.local:3000 | 影视聚合 |
-| iPTV | http://iptv.glseven.local:1905 | IPTV 直播源管理（管理后台 /admin，M3U /interface.m3u） |
+| iPTV | http://iptv.glseven.local:1905/admin | IPTV 直播源管理后台（M3U /interface.m3u） |
 
 全部端点统一为「域名 + 容器原生端口」。纯 TCP 协议端口由 nginx stream 透明转发（**端口号 = 原生默认**，也可用域名形式如 `mysql.glseven.local:3306`）：
 mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 rabbitmq-server 的 5672，容器内仍是原生 5672）、MQTT 1883、MQTT-WS 15675、kafka 29092（宿主/局域网客户端入口，双 listener 见下方「Kafka 双 listener」）、etcd 2379、ldap 389/636、nacos 8848/9848、ollama 11434、beats 5044、registry 5000。
@@ -101,7 +103,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 ### APISIX 3.18.0
 
 - 独立网关组件：数据面 :9080 + Admin API :9180，**路由留空**由微服务开发自行配置（无路由时数据面 404 为预期）。
-- 无内置 UI（官方 Dashboard 已退役），管理走 Admin API，`X-API-KEY` 见 `apisix/conf/config.yaml`。
+- 内置 Dashboard 访问入口为 `/ui/`，配置与路由管理走 Admin API，`X-API-KEY` 见 `apisix/conf/config.yaml`。
 - 配置存储为 infra 域的 etcd（3.6.14 成熟线）；`allow_admin: 0.0.0.0/0` 由 X-API-KEY 守卫（无/错 key 401），取舍说明见配置文件注释。
 
 ### ELK + filebeat 日志闭环
