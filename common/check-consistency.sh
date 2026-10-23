@@ -13,6 +13,21 @@
 # 另：服务的 container_name 与 hostname 必须一致（子域名 = 容器名 约定的前提；门户 portal -> nginx 除外），
 # 提取服务清单时即按此过滤，不一致的服务根本不会进入下面的检查（属静默跳过，非断言）。
 
+strict=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --strict)
+      strict=true
+      ;;
+    *)
+      printf 'ERROR: unknown argument: %s\n' "$1" >&2
+      printf 'Usage: %s [--strict]\n' "${BASH_SOURCE[0]}" >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$SCRIPT_DIR" || exit 0
 
@@ -44,57 +59,62 @@ services=$(for f in docker-compose-*.yml; do
   ' "$f"
 done | sort -u)
 
-[[ -z "$services" ]] && { echo "  [!] 未能从 compose 提取任何服务（解析逻辑失效？）"; exit 0; }
+[[ -z "$services" ]] && { warn "未能从 compose 提取任何服务（解析逻辑失效？）"; }
 
-# 1) 每个服务应有 conf.d 或 stream-conf.d 配置（纯协议服务与门户自身豁免）
-for svc in $services; do
-  is_in "$svc" "$PORTAL_SELF" && continue
-  is_in "$svc" "$INTERNAL_ONLY" && continue
-  has_http=false; has_stream=false
-  [[ -f "portal/conf/conf.d/$svc.conf" ]] && has_http=true
-  [[ -f "portal/conf/stream-conf.d/$svc.conf" ]] && has_stream=true
-  if ! $has_http && ! $has_stream; then
-    warn "${svc}：既无 portal/conf/conf.d/$svc.conf 也无 stream-conf.d/$svc.conf"
-  elif ! $has_http && ! is_in "$svc" "$PROTOCOL_ONLY"; then
-    warn "${svc}：无 conf.d 配置，但不在纯协议服务清单内（有 HTTP 入口却未代理？）"
-  fi
-done
-
-# 2) conf.d 里出现的每个 server_name 子域名，都应有同名容器（抓孤立 vhost / 改名后遗留）
-for f in portal/conf/conf.d/*.conf; do
-  for sub in $(grep -hoE 'server_name[[:space:]]+[a-z0-9.-]+\.glseven\.local' "$f" | awk '{print $2}' | sed 's/\.glseven\.local$//' | sort -u); do
-    [[ -z "$sub" ]] && continue
-    expected_sub="$sub"
-    [[ "$sub" == "$PORTAL_SUBDOMAIN" ]] && expected_sub="$PORTAL_SELF"
-    is_in "$expected_sub" "$(echo "$services" | tr '\n' ' ')" || warn "$(basename "$f")：server_name $sub.glseven.local 无对应容器"
+if [[ -n "$services" ]]; then
+  # 1) 每个服务应有 conf.d 或 stream-conf.d 配置（纯协议服务与门户自身豁免）
+  for svc in $services; do
+    is_in "$svc" "$PORTAL_SELF" && continue
+    is_in "$svc" "$INTERNAL_ONLY" && continue
+    has_http=false; has_stream=false
+    [[ -f "portal/conf/conf.d/$svc.conf" ]] && has_http=true
+    [[ -f "portal/conf/stream-conf.d/$svc.conf" ]] && has_stream=true
+    if ! $has_http && ! $has_stream; then
+      warn "${svc}：既无 portal/conf/conf.d/$svc.conf 也无 stream-conf.d/$svc.conf"
+    elif ! $has_http && ! is_in "$svc" "$PROTOCOL_ONLY"; then
+      warn "${svc}：无 conf.d 配置，但不在纯协议服务清单内（有 HTTP 入口却未代理？）"
+    fi
   done
-done
 
-# 3) 有 HTTP 入口的服务应在门户页有卡片
-for svc in $services; do
-  is_in "$svc" "$PROTOCOL_ONLY" && continue
-  is_in "$svc" "$NO_CARD_OK" && continue
-  is_in "$svc" "$PORTAL_SELF" && continue
-  is_in "$svc" "$INTERNAL_ONLY" && continue
-  grep -q "data-host=\"$svc\"" portal/html/index.html || warn "${svc}：门户页 portal/html/index.html 缺卡片"
-done
+  # 2) conf.d 里出现的每个 server_name 子域名，都应有同名容器（抓孤立 vhost / 改名后遗留）
+  for f in portal/conf/conf.d/*.conf; do
+    for sub in $(grep -hoE 'server_name[[:space:]]+[a-z0-9.-]+\.glseven\.local' "$f" | awk '{print $2}' | sed 's/\.glseven\.local$//' | sort -u); do
+      [[ -z "$sub" ]] && continue
+      expected_sub="$sub"
+      [[ "$sub" == "$PORTAL_SUBDOMAIN" ]] && expected_sub="$PORTAL_SELF"
+      is_in "$expected_sub" "$(echo "$services" | tr '\n' ' ')" || warn "$(basename "$f")：server_name $sub.glseven.local 无对应容器"
+    done
+  done
 
-# 4) /etc/hosts 初始化清单（README 里的那行命令）应覆盖所有子域名
-hosts_line=$(grep -oE "echo '127\.0\.0\.1 portal\.glseven\.local.*glseven\.local'" README.md | head -1)
-if [[ -n "$hosts_line" ]]; then
+  # 3) 有 HTTP 入口的服务应在门户页有卡片
   for svc in $services; do
     is_in "$svc" "$PROTOCOL_ONLY" && continue
+    is_in "$svc" "$NO_CARD_OK" && continue
+    is_in "$svc" "$PORTAL_SELF" && continue
     is_in "$svc" "$INTERNAL_ONLY" && continue
-    expected_sub="$svc"
-    [[ "$svc" == "$PORTAL_SELF" ]] && expected_sub="$PORTAL_SUBDOMAIN"
-    [[ "$hosts_line" == *"$expected_sub.glseven.local"* ]] || warn "${svc}：README 的 /etc/hosts 初始化清单缺 $expected_sub.glseven.local（二级域名将不解析）"
+    grep -q "data-host=\"$svc\"" portal/html/index.html || warn "${svc}：门户页 portal/html/index.html 缺卡片"
   done
-else
-  warn "未能从 README.md 定位 /etc/hosts 初始化清单，跳过该项校验"
+
+  # 4) /etc/hosts 初始化清单（README 里的那行命令）应覆盖所有子域名
+  hosts_line=$(grep -oE "echo '127\.0\.0\.1 portal\.glseven\.local.*glseven\.local'" README.md | head -1)
+  if [[ -n "$hosts_line" ]]; then
+    for svc in $services; do
+      is_in "$svc" "$PROTOCOL_ONLY" && continue
+      is_in "$svc" "$INTERNAL_ONLY" && continue
+      expected_sub="$svc"
+      [[ "$svc" == "$PORTAL_SELF" ]] && expected_sub="$PORTAL_SUBDOMAIN"
+      [[ "$hosts_line" == *"$expected_sub.glseven.local"* ]] || warn "${svc}：README 的 /etc/hosts 初始化清单缺 $expected_sub.glseven.local（二级域名将不解析）"
+    done
+  else
+    warn "未能从 README.md 定位 /etc/hosts 初始化清单，跳过该项校验"
+  fi
 fi
 
 if [[ "$issues" -eq 0 ]]; then
   echo "  consistency: OK（$(echo "$services" | wc -l | tr -d ' ') 个服务的门户/代理/hosts 同步点齐全）"
+elif [[ "$strict" == true ]]; then
+  echo "  consistency: $issues 项待同步（strict 模式，校验失败）"
+  exit 1
 else
   echo "  consistency: $issues 项待同步（仅告警，不阻断启动）"
 fi
