@@ -47,6 +47,31 @@ jobs:
         run: |
           set -euo pipefail
 
+          classify_release_api() {
+            local tag="$1"
+            local status=0
+            local response=""
+            local http_status=""
+
+            response="$(gh api --include \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$tag" 2>&1)" ||
+              status=$?
+            http_status="$(
+              printf '%s\n' "$response" |
+                awk '$1 ~ /^HTTP\// { print $2; exit }'
+            )"
+
+            if [[ "$status" -eq 0 && "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+              return 0
+            fi
+            if [[ "$status" -ne 0 && "$http_status" == "404" ]]; then
+              return 2
+            fi
+
+            printf '%s\n' "$response" >&2
+            return 1
+          }
+
           latest_tag="$(
             git tag --merged HEAD --list 'v*' --sort=-v:refname |
               awk '/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/ { print; exit }'
@@ -56,17 +81,19 @@ jobs:
             exit 0
           fi
 
-          if response="$(gh api \
-            "repos/$GITHUB_REPOSITORY/releases/tags/$latest_tag" 2>&1)"; then
-            exit 0
-          fi
-
-          if [[ "$response" =~ (^|[^0-9])HTTP[[:space:]]404([^0-9]|$) ]]; then
-            printf 'Latest tag %s has no GitHub Release; rerun its original release workflow before releasing newer changes.\n' "$latest_tag" >&2
-          else
-            printf '%s\n' "$response" >&2
-          fi
-          exit 1
+          classification=0
+          classify_release_api "$latest_tag" || classification=$?
+          case "$classification" in
+            0)
+              ;;
+            2)
+              printf 'Latest tag %s has no GitHub Release; the missing prior Release must be published before newer versions are released. For legacy tags, backfill it from the annotated tag message.\n' "$latest_tag" >&2
+              exit 1
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
 
       - name: Generate release notes
         if: steps.version.outputs.release == 'true'
@@ -101,20 +128,48 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          if response="$(gh api \
-            "repos/$GITHUB_REPOSITORY/releases/tags/$VERSION" 2>&1)"; then
-            echo "GitHub Release $VERSION already exists"
-            exit 0
-          fi
-          if [[ "$response" =~ (^|[^0-9])HTTP[[:space:]]404([^0-9]|$) ]]; then
-            gh release create "$VERSION" \
-              --verify-tag \
-              --title "$VERSION" \
-              --notes-file /tmp/release-notes.md
-          else
+
+          classify_release_api() {
+            local tag="$1"
+            local status=0
+            local response=""
+            local http_status=""
+
+            response="$(gh api --include \
+              "repos/$GITHUB_REPOSITORY/releases/tags/$tag" 2>&1)" ||
+              status=$?
+            http_status="$(
+              printf '%s\n' "$response" |
+                awk '$1 ~ /^HTTP\// { print $2; exit }'
+            )"
+
+            if [[ "$status" -eq 0 && "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+              return 0
+            fi
+            if [[ "$status" -ne 0 && "$http_status" == "404" ]]; then
+              return 2
+            fi
+
             printf '%s\n' "$response" >&2
-            exit 1
-          fi
+            return 1
+          }
+
+          classification=0
+          classify_release_api "$VERSION" || classification=$?
+          case "$classification" in
+            0)
+              echo "GitHub Release $VERSION already exists"
+              ;;
+            2)
+              gh release create "$VERSION" \
+                --verify-tag \
+                --title "$VERSION" \
+                --notes-file /tmp/release-notes.md
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
 
       - name: Report skipped release
         if: steps.version.outputs.release != 'true'
