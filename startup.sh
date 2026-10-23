@@ -23,6 +23,21 @@ echo "启动 GLSeven Docker 容器..."
 echo "DOCKER_VOLUME: $DOCKER_VOLUME"
 echo "==========================================="
 
+start_compose_group() {
+  local group="$1"
+  local -a services=()
+
+  if [[ "$group" == "observability" ]] &&
+    is_apple_silicon "$(uname -s)" "$(uname -m)"; then
+    echo "WARN: Apple Silicon cannot run the amd64 ELK image; skipping elk/filebeat."
+    echo "WARN: observability continues with prometheus/grafana only."
+    docker compose -f "docker-compose-${group}.yml" stop elk filebeat >/dev/null 2>&1 || true
+    services=("${COMPOSE_SERVICES_OBSERVABILITY_APPLE_SILICON[@]}")
+  fi
+
+  docker compose -f "docker-compose-${group}.yml" up -d "${services[@]}"
+}
+
 # 部署前置自愈与预检（幂等）：目录权限 / .env / vm.max_map_count / 孤儿网桥 / registry 镜像（ghcr+quay）/ 端口占用 / 日志轮转
 run_preflight
 
@@ -82,7 +97,7 @@ fi
 # 启动基础设施服务
 echo "Starting base services..."
 for group in "${COMPOSE_FILES_BASE[@]}"; do
-  docker compose -f "docker-compose-${group}.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
+  start_compose_group "$group" || { echo "Error: ${group} services failed to start"; exit 1; }
   echo "✓ ${group} services started"
 done
 
@@ -104,14 +119,14 @@ echo "✓ MySQL is healthy"
 # 启动依赖 MySQL 的服务
 echo "Starting deferred services..."
 for group in "${COMPOSE_FILES_DEFERRED[@]}"; do
-  docker compose -f "docker-compose-${group}.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
+  start_compose_group "$group" || { echo "Error: ${group} services failed to start"; exit 1; }
   echo "✓ ${group} services started"
 done
 
 # 启动导航门户（最后一批）
 echo "Starting portal..."
 for group in "${COMPOSE_FILES_PORTAL[@]}"; do
-  docker compose -f "docker-compose-${group}.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
+  start_compose_group "$group" || { echo "Error: ${group} services failed to start"; exit 1; }
   echo "✓ ${group} services started"
 done
 

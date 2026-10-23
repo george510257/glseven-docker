@@ -57,4 +57,4 @@ curl -I http://<容器名>.glseven.local:<原生端口>              # 经门户
 
 ## 平台限制
 
-以 `README.md` §「已知平台限制」为准，该节持续维护。要点：`sebp/elk` 仅 amd64，Apple Silicon 上启动即失败；Portainer 启动后 5 分钟未初始化会锁死，需从 `docker logs` 取新的 setup token 重来；宿主 5000 端口（registry）与 macOS AirPlay Receiver 冲突；phpLDAPadmin 首次初始化后需导入一次 `openldap/bootstrap/admin-entry.ldif`。在新宿主上排查任何启动失败前，先读这一节。
+以 `README.md` §「已知平台限制」为准，该节持续维护。要点：`sebp/elk` 仅 amd64，Apple Silicon 上启动即失败；`startup.sh` 会自动跳过 `elk/filebeat` 并继续其余服务；Portainer 启动后 5 分钟未初始化会锁死，需从 `docker logs` 取新的 setup token 重来；宿主 5000 端口（registry）与 macOS AirPlay Receiver 冲突；phpLDAPadmin 首次初始化后需导入一次 `openldap/bootstrap/admin-entry.ldif`。在新宿主上排查任何启动失败前，先读这一节。

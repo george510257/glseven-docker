@@ -39,6 +39,9 @@ jobs:
       - name: Test Docker volume resolution
         run: bash .github/scripts/test-docker-volume.sh
 
+      - name: Test startup platform selection
+        run: bash .github/scripts/test-startup-platform.sh
+
       - name: Validate Compose files
         shell: bash
         run: |

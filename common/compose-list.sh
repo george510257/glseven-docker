@@ -9,3 +9,10 @@
 COMPOSE_FILES_BASE=(infra observability)
 COMPOSE_FILES_DEFERRED=(security platform apps)
 COMPOSE_FILES_PORTAL=(portal)
+
+# Apple Silicon 的 amd64 ELK 无法在 Rosetta 模拟层提供 seccomp；只启动可用的监控服务。
+COMPOSE_SERVICES_OBSERVABILITY_APPLE_SILICON=(prometheus grafana)
+
+is_apple_silicon() {
+  [[ "${1:-}" == "Darwin" && "${2:-}" == "arm64" ]]
+}

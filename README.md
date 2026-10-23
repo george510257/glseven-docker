@@ -204,7 +204,7 @@ flush privileges;
 
 ## 已知平台限制（宿主环境，非编排缺陷）
 
-- **elk**（sebp/elk，amd64-only 镜像）：Apple Silicon macOS 的 Rosetta 模拟层不翻译 seccomp 系统调用，Elasticsearch 9 启动即失败（错误特征 `seccomp unavailable: CONFIG_SECCOMP not compiled into kernel`）；Linux amd64 主机正常。内存受限环境可通过 `ES_JAVA_OPTS` / `LS_JAVA_OPTS` 降低 JVM 堆。
+- **elk**（sebp/elk，amd64-only 镜像）：Apple Silicon macOS 的 Rosetta 模拟层不翻译 seccomp 系统调用，Elasticsearch 9 启动即失败（错误特征 `seccomp unavailable: CONFIG_SECCOMP not compiled into kernel`）；Linux amd64 主机正常。`startup.sh` 在 Apple Silicon 上会自动跳过 `elk/filebeat`，继续启动 Prometheus、Grafana 和其余域；ELK 日志检索入口不可用。内存受限环境可通过 `ES_JAVA_OPTS` / `LS_JAVA_OPTS` 降低 JVM 堆。
 - **Portainer 初始化**：创建 admin 前需从容器日志取 Setup token（`docker logs portainer 2>&1 | grep setup_token`，每次重启会刷新）；且 5 分钟未完成初始化会自动锁定（页面不可操作），需 `docker restart portainer` 后用新 token 重来。初始化请求经 nginx 时需保留原始 Host 头（已在 snippets/proxy.conf 用 `$http_host` 配置）。
 - **phpLDAPadmin 登录**：登录者必须是目录内真实条目，而 osixia/openldap 只把 `cn=admin` 设为 olcRootDN（DB 级 bind 凭据，无目录条目），因此仓库附 `openldap/bootstrap/admin-entry.ldif`（含 `uid=admin`），首次初始化卷后需导入一次（命令见该文件头注释），导入后 USER ID 填 `admin` 登录（bind 实际走 olcRootDN，具全权）。登录后若见一次 500 页，刷新即可（登录表单闪存残留，一次性）。另：PLA 检索用户需绑定搜索账号（默认 ACL 拒匿名读），见 `common/env/phpldapadmin.env`。
 - **Registry :5000**：端口绑定主体是 nginx（portal），但 macOS 上该端口仍可能被 AirPlay Receiver（ControlCenter 进程）占用导致容器启动报 `port is already allocated`，需在系统设置关闭 AirPlay Receiver（全栈唯一需宿主侧配合的端口）。
