@@ -8,7 +8,7 @@
 
 **Tech Stack:** GitHub Actions、Bash 3.2+ 兼容语法、Git、GitHub CLI (`gh`)、Docker Compose v2、Python 3 + PyYAML（仅本地 workflow 语法校验）
 
-> **Historical implementation plan / as-built boundary:** 本文保留原始任务步骤、执行历史和部分代码快照。除明确标注 **as-built verified** 的章节外，代码块仅用于说明当时的实现，不是当前实现的复制来源；不得直接照抄。实际基线为已发布 `origin/main` 的 `a132f97`，当前待发布修复位于 `codex/ci-semver-release-fixes`，包含 `1ea301c`、`1e8fadf`、`cab6a93` 及本次 review 修正提交。权威来源始终是当前分支中的 `.github/scripts/next-version.sh`、`.github/scripts/release-notes.sh`、`.github/scripts/test-release-scripts.sh`、`.github/workflows/ci.yml` 和 `.github/workflows/release.yml`。
+> **Historical implementation plan / as-built boundary:** 本文保留原始任务步骤、执行历史和部分代码快照。除明确标注 **as-built verified** 的章节外，代码块仅用于说明当时的实现，不是当前实现的复制来源；不得直接照抄。实际基线为已发布 `origin/main` 的 `a132f97`。当前 pending range 为 `a132f97..987e91f`；在该快照中包含四个提交：`1ea301c`、`1e8fadf`、`cab6a93`、`987e91f`。后续任何文档修正提交都会扩展该范围，执行时以 `git log a132f97..HEAD` 为准，不硬编码总数。权威来源始终是当前分支中的 `.github/scripts/next-version.sh`、`.github/scripts/release-notes.sh`、`.github/scripts/test-release-scripts.sh`、`.github/workflows/ci.yml` 和 `.github/workflows/release.yml`。
 
 本节以下的 checkbox 是历史执行记录，不表示当前是否已完成。
 
@@ -17,6 +17,8 @@
 | `v1.1.0` | 已发布；annotated tag peel 到 `a132f97` |
 | `1ea301c`、`1e8fadf` | 在当前修复分支，待 PR；未合并、未发布 |
 | `cab6a93` | Task 6 文档同步，待随修复分支推送 |
+| `987e91f` | 后续发布与回填文档，待随修复分支推送 |
+| `a132f97..987e91f` | 该快照包含上述四个 pending 提交 |
 | `v1.1.1` | 预期后续版本；发布 runbook 待执行 |
 
 ---
@@ -710,16 +712,24 @@ gh pr merge 3 --merge
 Run:
 
 ```bash
+set -euo pipefail
+
 backfill_missing_release() {
   local missing_tag="${MISSING_TAG:?set MISSING_TAG to the tag reported by the prior-Release guard}"
+  local repository="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
   local command_status=0
   local response=""
   local http_status=""
   local tag_type=""
 
+  [[ -n "$repository" ]] || {
+    printf 'Cannot determine the GitHub repository.\n' >&2
+    return 1
+  }
+
   response="$(
     gh api --include \
-      "repos/$GITHUB_REPOSITORY/releases/tags/$missing_tag" 2>&1
+      "repos/$repository/releases/tags/$missing_tag" 2>&1
   )" || command_status=$?
   http_status="$(
     printf '%s\n' "$response" |
@@ -731,15 +741,19 @@ backfill_missing_release() {
     return 0
   fi
   if [[ "$command_status" -ne 0 && "$http_status" == "404" ]]; then
-    tag_type="$(git cat-file -t "$missing_tag" 2>/dev/null || true)"
+    git fetch --tags origin
+    if ! tag_type="$(git cat-file -t "$missing_tag" 2>/dev/null)"; then
+      printf '%s is missing; refusing backfill.\n' "$missing_tag" >&2
+      return 1
+    fi
     if [[ "$tag_type" != "tag" ]]; then
-      printf '%s is missing or is not an annotated tag; refusing backfill.\n' "$missing_tag" >&2
+      printf '%s is not an annotated tag; refusing backfill.\n' "$missing_tag" >&2
       return 1
     fi
     gh release create "$missing_tag" \
       --verify-tag \
       --title "$missing_tag" \
-      --notes-from-tag
+      --notes-from-tag || return $?
     return 0
   fi
 
@@ -835,17 +849,21 @@ Expected:
 
 ## 后续修复发布 runbook（预期 v1.1.1）
 
-> **状态：PENDING，尚未执行。** 当前分支包含 `1ea301c`、`1e8fadf`、`cab6a93` 及本次 review 修正提交；`1ea301c`、`1e8fadf` 仍未合并或发布。基于 `v1.1.0` 运行 `bash .github/scripts/next-version.sh` 当前得到 `version=v1.1.1`、`previous_tag=v1.1.0`、`bump=patch`；merge commit 不参与分类，普通 `fix` / `ci` 提交参与。
+> **状态：PENDING，尚未执行。** 在 `987e91f` 快照，pending range `a132f97..987e91f` 包含四个提交：`1ea301c`、`1e8fadf`、`cab6a93`、`987e91f`；任何后续文档修正提交都会扩展该范围，执行时以当前 `git log a132f97..HEAD` 为准。`1ea301c`、`1e8fadf` 仍未合并或发布。基于 `v1.1.0` 运行 `bash .github/scripts/next-version.sh` 当前得到 `version=v1.1.1`、`previous_tag=v1.1.0`、`bump=patch`；merge commit 不参与分类，普通 `fix` / `ci` 提交参与。
+
+以下步骤在同一 Bash session 中按顺序执行。每个 sequence block 都启用 `set -euo pipefail`；PR checks、merge、run lookup 或 watch 任一步失败，后续命令不会继续。
 
 1. 推送修复分支：
 
 ```bash
+set -euo pipefail
 git push -u origin codex/ci-semver-release-fixes
 ```
 
 2. 创建到 `develop` 的 PR：
 
 ```bash
+set -euo pipefail
 fix_pr_url="$(
   gh pr create \
     --base develop \
@@ -859,17 +877,49 @@ fix_pr="${fix_pr_url##*/}"
 3. 等待 CI、检查结果，再 merge 到 `develop`：
 
 ```bash
-gh pr checks "$fix_pr" --watch
+set -euo pipefail
+gh pr checks "$fix_pr" --watch --fail-fast
 gh pr merge "$fix_pr" --merge
+fix_merge_sha=""
+for attempt in {1..12}; do
+  fix_merge_sha="$(
+    gh pr view "$fix_pr" --json mergeCommit --jq '.mergeCommit.oid // empty'
+  )"
+  if [[ -n "$fix_merge_sha" ]]; then
+    break
+  fi
+  sleep 5
+done
+[[ -n "$fix_merge_sha" ]] || {
+  echo "fix PR merge commit is not available" >&2
+  exit 1
+}
 ```
 
-4. 等待 merge 后的 `develop` push CI：
+4. 按 `fix_merge_sha` 查找 merge 后的 `develop` push CI，短暂重试后 watch：
 
 ```bash
-develop_ci_run="$(
-  gh run list --workflow ci.yml --branch develop --limit 1 \
-    --json databaseId --jq '.[0].databaseId'
-)"
+set -euo pipefail
+develop_ci_run=""
+for attempt in {1..12}; do
+  develop_ci_run="$(
+    gh run list \
+      --workflow ci.yml \
+      --branch develop \
+      --commit "$fix_merge_sha" \
+      --limit 1 \
+      --json databaseId \
+      --jq '.[0].databaseId // empty'
+  )"
+  if [[ -n "$develop_ci_run" ]]; then
+    break
+  fi
+  sleep 5
+done
+[[ -n "$develop_ci_run" ]] || {
+  echo "develop CI run for $fix_merge_sha was not indexed" >&2
+  exit 1
+}
 gh run watch "$develop_ci_run" --exit-status
 gh run view "$develop_ci_run" --json status,conclusion,url
 ```
@@ -877,6 +927,7 @@ gh run view "$develop_ci_run" --json status,conclusion,url
 5. 创建 `develop` -> `main` PR，等待 CI 后 merge：
 
 ```bash
+set -euo pipefail
 release_pr_url="$(
   gh pr create \
     --base main \
@@ -885,17 +936,48 @@ release_pr_url="$(
     --body "合入已通过 develop CI 的发布修复；预期自动生成 v1.1.1。"
 )"
 release_pr="${release_pr_url##*/}"
-gh pr checks "$release_pr" --watch
+gh pr checks "$release_pr" --watch --fail-fast
 gh pr merge "$release_pr" --merge
+release_merge_sha=""
+for attempt in {1..12}; do
+  release_merge_sha="$(
+    gh pr view "$release_pr" --json mergeCommit --jq '.mergeCommit.oid // empty'
+  )"
+  if [[ -n "$release_merge_sha" ]]; then
+    break
+  fi
+  sleep 5
+done
+[[ -n "$release_merge_sha" ]] || {
+  echo "release PR merge commit is not available" >&2
+  exit 1
+}
 ```
 
-6. 等待 Release workflow，并确认创建 `v1.1.1`：
+6. 按 `release_merge_sha` 查找 `release.yml`，短暂重试后 watch 并确认创建 `v1.1.1`：
 
 ```bash
-release_run="$(
-  gh run list --workflow release.yml --branch main --limit 1 \
-    --json databaseId --jq '.[0].databaseId'
-)"
+set -euo pipefail
+release_run=""
+for attempt in {1..12}; do
+  release_run="$(
+    gh run list \
+      --workflow release.yml \
+      --branch main \
+      --commit "$release_merge_sha" \
+      --limit 1 \
+      --json databaseId \
+      --jq '.[0].databaseId // empty'
+  )"
+  if [[ -n "$release_run" ]]; then
+    break
+  fi
+  sleep 5
+done
+[[ -n "$release_run" ]] || {
+  echo "release run for $release_merge_sha was not indexed" >&2
+  exit 1
+}
 gh run watch "$release_run" --exit-status
 gh run view "$release_run" --json status,conclusion,headSha,url
 git fetch --tags origin
@@ -907,6 +989,8 @@ Expected: Release run 成功；`v1.1.1` 出现，`v1.1.0` 保留；merge commit 
 7. 验证 annotated tag peel、Release body 与比较链接：
 
 ```bash
+set -euo pipefail
+git fetch --tags origin
 git cat-file -t v1.1.1
 git rev-parse v1.1.1^{}
 git rev-parse origin/main
@@ -919,6 +1003,7 @@ Expected: `git cat-file -t` 输出 `tag`；peel 后的 commit 与 `origin/main` 
 8. 重跑同一 Release workflow，验证幂等：
 
 ```bash
+set -euo pipefail
 gh run rerun "$release_run"
 gh run watch "$release_run" --exit-status
 git fetch --tags origin
@@ -932,6 +1017,8 @@ Expected: 重跑成功；tag 仅有 `v1.1.0`、`v1.1.1`，没有 `v1.1.2`；`v1.
 9. 可选：发布后执行 docs-only `main` 合并 dry run，确认 `release=false`：
 
 ```bash
+set -euo pipefail
+git fetch origin
 git switch -c docs/ci-release-dry-run-20261023 origin/main
 printf '%s\n' '# CI release dry run' > docs/ci-release-dry-run.md
 git add docs/ci-release-dry-run.md
@@ -945,17 +1032,56 @@ dry_pr_url="$(
     --body "仅文档变更；预期 Release workflow 跳过，不创建新 tag。"
 )"
 dry_pr="${dry_pr_url##*/}"
-gh pr checks "$dry_pr" --watch
+gh pr checks "$dry_pr" --watch --fail-fast
 gh pr merge "$dry_pr" --merge
-dry_release_run="$(
-  gh run list --workflow release.yml --branch main --limit 1 \
-    --json databaseId --jq '.[0].databaseId'
-)"
+dry_merge_sha=""
+for attempt in {1..12}; do
+  dry_merge_sha="$(
+    gh pr view "$dry_pr" --json mergeCommit --jq '.mergeCommit.oid // empty'
+  )"
+  if [[ -n "$dry_merge_sha" ]]; then
+    break
+  fi
+  sleep 5
+done
+[[ -n "$dry_merge_sha" ]] || {
+  echo "dry-run PR merge commit is not available" >&2
+  exit 1
+}
+dry_release_run=""
+for attempt in {1..12}; do
+  dry_release_run="$(
+    gh run list \
+      --workflow release.yml \
+      --branch main \
+      --commit "$dry_merge_sha" \
+      --limit 1 \
+      --json databaseId \
+      --jq '.[0].databaseId // empty'
+  )"
+  if [[ -n "$dry_release_run" ]]; then
+    break
+  fi
+  sleep 5
+done
+[[ -n "$dry_release_run" ]] || {
+  echo "release dry-run for $dry_merge_sha was not indexed" >&2
+  exit 1
+}
 gh run watch "$dry_release_run" --exit-status
-gh run view "$dry_release_run" --log |
-  rg 'No releasable Conventional Commits found; skipping release\.'
+if gh run view "$dry_release_run" --log |
+  rg -q 'No releasable Conventional Commits found; skipping release\.'; then
+  echo "docs-only release correctly skipped"
+else
+  echo "docs-only release did not report a skip" >&2
+  exit 1
+fi
 git fetch --tags origin
 git tag --list 'v1.1.*'
+if git rev-parse -q --verify refs/tags/v1.1.2 >/dev/null; then
+  echo "unexpected v1.1.2 tag" >&2
+  exit 1
+fi
 ```
 
 Expected: run 成功且输出跳过 release；`next-version.sh` 返回 `release=false` 语义；没有 `v1.1.2` 或新 Release。若需要删除 dry-run 文件，使用另一条 docs-only PR，同样不应产生版本。
@@ -978,6 +1104,7 @@ Expected: run 成功且输出跳过 release；`next-version.sh` 返回 `release=
 - 后续修复仍待 PR：Task 4 Step 8。
 - 通用 `MISSING_TAG` 回填：Task 4 Step 3 与设计文档第 7 节。
 - 预期 `v1.1.1` 的后续发布、幂等与 docs-only dry run：后续修复发布 runbook。
+- pending range 与 merge-SHA run 轮询：顶部状态表及后续修复发布 runbook。
 - 不引入 npm、第三方发布 Action、PAT：文件结构与 workflows 均只使用 `actions/checkout`、Git 与 `gh`。
 
 **Placeholder scan**

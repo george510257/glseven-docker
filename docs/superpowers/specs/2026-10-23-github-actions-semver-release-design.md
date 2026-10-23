@@ -181,16 +181,24 @@ gh release create v1.0.0 --verify-tag --title v1.0.0 --notes-from-tag
 后续遇到任意 prior tag 缺失 Release 时，先按 guard 报告设置 `MISSING_TAG`，再执行以下只读分类与受控回填：
 
 ```bash
+set -euo pipefail
+
 backfill_missing_release() {
   local missing_tag="${MISSING_TAG:?set MISSING_TAG to the tag reported by the prior-Release guard}"
+  local repository="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
   local command_status=0
   local response=""
   local http_status=""
   local tag_type=""
 
+  [[ -n "$repository" ]] || {
+    printf 'Cannot determine the GitHub repository.\n' >&2
+    return 1
+  }
+
   response="$(
     gh api --include \
-      "repos/$GITHUB_REPOSITORY/releases/tags/$missing_tag" 2>&1
+      "repos/$repository/releases/tags/$missing_tag" 2>&1
   )" || command_status=$?
   http_status="$(
     printf '%s\n' "$response" |
@@ -202,15 +210,19 @@ backfill_missing_release() {
     return 0
   fi
   if [[ "$command_status" -ne 0 && "$http_status" == "404" ]]; then
-    tag_type="$(git cat-file -t "$missing_tag" 2>/dev/null || true)"
+    git fetch --tags origin
+    if ! tag_type="$(git cat-file -t "$missing_tag" 2>/dev/null)"; then
+      printf '%s is missing; refusing backfill.\n' "$missing_tag" >&2
+      return 1
+    fi
     if [[ "$tag_type" != "tag" ]]; then
-      printf '%s is missing or is not an annotated tag; refusing backfill.\n' "$missing_tag" >&2
+      printf '%s is not an annotated tag; refusing backfill.\n' "$missing_tag" >&2
       return 1
     fi
     gh release create "$missing_tag" \
       --verify-tag \
       --title "$missing_tag" \
-      --notes-from-tag
+      --notes-from-tag || return $?
     return 0
   fi
 
