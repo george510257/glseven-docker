@@ -8,7 +8,16 @@
 
 **Tech Stack:** GitHub Actions、Bash 3.2+ 兼容语法、Git、GitHub CLI (`gh`)、Docker Compose v2、Python 3 + PyYAML（仅本地 workflow 语法校验）
 
-> **As-built / supersedes original snippets:** 本文已按已发布 `origin/main`（`a132f97`）及后续修复分支回填。Task 1 反映最终脚本语义，Task 3 只保留与当前 `.github/workflows/*.yml` 一致的 as-built 片段；完整实现以仓库文件为准，旧的可执行片段均已移除。`v1.1.0` 已完成发布；`1ea301c`、`1e8fadf` 仍在 `codex/ci-semver-release-fixes`，尚待 PR 与合并。
+> **Historical implementation plan / as-built boundary:** 本文保留原始任务步骤、执行历史和部分代码快照。除明确标注 **as-built verified** 的章节外，代码块仅用于说明当时的实现，不是当前实现的复制来源；不得直接照抄。实际基线为已发布 `origin/main` 的 `a132f97`，当前待发布修复位于 `codex/ci-semver-release-fixes`，包含 `1ea301c`、`1e8fadf`、`cab6a93` 及本次 review 修正提交。权威来源始终是当前分支中的 `.github/scripts/next-version.sh`、`.github/scripts/release-notes.sh`、`.github/scripts/test-release-scripts.sh`、`.github/workflows/ci.yml` 和 `.github/workflows/release.yml`。
+
+本节以下的 checkbox 是历史执行记录，不表示当前是否已完成。
+
+| 项目 | 当前状态 |
+|---|---|
+| `v1.1.0` | 已发布；annotated tag peel 到 `a132f97` |
+| `1ea301c`、`1e8fadf` | 在当前修复分支，待 PR；未合并、未发布 |
+| `cab6a93` | Task 6 文档同步，待随修复分支推送 |
+| `v1.1.1` | 预期后续版本；发布 runbook 待执行 |
 
 ---
 
@@ -32,7 +41,7 @@
 - Create: `.github/scripts/test-release-scripts.sh`
 - Create: `.github/scripts/next-version.sh`
 
-最终实现以 `.github/scripts/next-version.sh` 和 `.github/scripts/test-release-scripts.sh` 为准；以下代码已同步 `--no-merges` 与真实双 parent merge 回归用例。
+> **Historical snapshot (not authoritative).** 以下内容记录当时的任务步骤和代码快照，不代表完整或最终实现。当前版本计算与测试以 `.github/scripts/next-version.sh` 和 `.github/scripts/test-release-scripts.sh` 为准。
 
 - [ ] **Step 1: 写版本计算失败测试**
 
@@ -415,246 +424,9 @@ git commit -m "feat(ci): 新增语义版本计算"
 - Create: `.github/scripts/release-notes.sh`
 - Modify: `.github/scripts/test-release-scripts.sh`
 
-- [ ] **Step 1: 添加 Release Notes 失败测试**
+> **Historical only; original executable snapshots removed.** Task 2 早期的测试和 `release-notes.sh` 快照缺少 parent-aware merge 过滤，照抄会把 conventional merge subject 写入 Release Notes，与当前实现冲突。
 
-在 `.github/scripts/test-release-scripts.sh` 的 `run_next_version_tests()` 后追加：
-
-```bash
-run_release_notes_tests() {
-  local output
-
-  new_repo
-  init_v1
-  commit_file "feat(portal): 增加统一入口"
-  commit_file "fix(ci): 修复发布脚本"
-  commit_file "docs: 更新使用说明"
-  commit_file "chore: 调整构建命令"
-  git tag -a v1.1.0 -m "v1.1.0"
-  output="$(
-    GITHUB_SERVER_URL="https://github.example" \
-      bash "$RELEASE_NOTES" \
-        --from v1.0.0 \
-        --to v1.1.0 \
-        --repository owner/repo
-  )"
-  assert_contains "$output" "发布日期：" "release date"
-  assert_contains "$output" "## 功能" "feature heading"
-  assert_contains "$output" "feat(portal): 增加统一入口" "feature entry"
-  assert_contains "$output" "## 修复" "fix heading"
-  assert_contains "$output" "fix(ci): 修复发布脚本" "fix entry"
-  assert_contains "$output" "## 文档" "docs heading"
-  assert_contains "$output" "## 其他" "other heading"
-  assert_contains "$output" "https://github.example/owner/repo/commit/" "commit link"
-  assert_contains "$output" "https://github.example/owner/repo/compare/v1.0.0...v1.1.0" "compare link"
-
-  new_repo
-  init_v1
-  commit_file $'chore: 调整内部结构\n\nBREAKING CHANGE: 配置格式不再兼容'
-  git tag -a v2.0.0 -m "v2.0.0"
-  output="$(
-    bash "$RELEASE_NOTES" \
-      --from v1.0.0 \
-      --to v2.0.0 \
-      --repository owner/repo
-  )"
-  assert_contains "$output" "## 破坏性变更" "breaking heading"
-  assert_contains "$output" "chore: 调整内部结构" "breaking entry"
-
-  new_repo
-  commit_file "feat(ci): 初始化自动发布"
-  output="$(
-    bash "$RELEASE_NOTES" \
-      --from "" \
-      --to v0.1.0 \
-      --repository owner/repo
-  )"
-  assert_contains "$output" "https://github.com/owner/repo/commits/v0.1.0" "initial release link"
-
-  printf 'release-notes tests: OK\n'
-}
-```
-
-把文件末尾的 `case` 块替换为：
-
-```bash
-case "${1:-all}" in
-  next-version)
-    run_next_version_tests
-    ;;
-  release-notes)
-    run_release_notes_tests
-    ;;
-  all)
-    run_next_version_tests
-    run_release_notes_tests
-    ;;
-  *)
-    fail "unknown test group: $1"
-    ;;
-esac
-```
-
-- [ ] **Step 2: 运行测试确认失败**
-
-Run:
-
-```bash
-bash .github/scripts/test-release-scripts.sh release-notes
-```
-
-Expected: FAIL，`bash: .github/scripts/release-notes.sh: No such file or directory`。
-
-- [ ] **Step 3: 写最小 Release Notes 实现**
-
-创建 `.github/scripts/release-notes.sh`：
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-from=""
-to=""
-repository=""
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --from)
-      from="${2:-}"
-      shift 2
-      ;;
-    --to)
-      to="${2:-}"
-      shift 2
-      ;;
-    --repository)
-      repository="${2:-}"
-      shift 2
-      ;;
-    *)
-      printf 'unknown argument: %s\n' "$1" >&2
-      exit 2
-      ;;
-  esac
-done
-
-[[ -n "$to" ]] || {
-  printf 'missing --to\n' >&2
-  exit 2
-}
-[[ -n "$repository" ]] || {
-  printf 'missing --repository\n' >&2
-  exit 2
-}
-
-cd "$(git rev-parse --show-toplevel)"
-
-if [[ -n "$from" ]]; then
-  if git rev-parse -q --verify "refs/tags/$to" >/dev/null; then
-    commit_range="$from..$to"
-  else
-    commit_range="$from..HEAD"
-  fi
-else
-  if git rev-parse -q --verify "refs/tags/$to" >/dev/null; then
-    commit_range="$to"
-  else
-    commit_range="HEAD"
-  fi
-fi
-
-server="${GITHUB_SERVER_URL:-https://github.com}"
-server="${server%/}"
-
-printf '发布日期：%s\n\n' "$(TZ=Asia/Shanghai date +%Y-%m-%d)"
-
-git log --reverse --format='%H%x1f%s%x1f%b%x1e' "$commit_range" |
-  awk -v server="$server" -v repo="$repository" -v from="$from" -v to="$to" '
-    function section(title, entries, count, i) {
-      if (count == 0) return
-      print "## " title
-      for (i = 1; i <= count; i++) print entries[i]
-      print ""
-    }
-
-    BEGIN {
-      RS = "\036"
-      FS = "\037"
-      breaking_count = 0
-      feature_count = 0
-      fix_count = 0
-      optimization_count = 0
-      docs_count = 0
-      other_count = 0
-    }
-
-    {
-      hash = $1
-      subject = $2
-      body = $3
-      if (hash == "") next
-
-      commit_url = server "/" repo "/commit/" hash
-      link = "- " subject " ([" substr(hash, 1, 7) "](" commit_url "))"
-      breaking = (body ~ /(^|\n)BREAKING CHANGE: /) ||
-                 (subject ~ /^[A-Za-z]+(\([^)]*\))?!:/)
-
-      if (breaking) {
-        breaking_entries[++breaking_count] = link
-      }
-      if (subject ~ /^feat(\([^)]*\))?!?:/) {
-        feature_entries[++feature_count] = link
-      } else if (subject ~ /^(fix)(\([^)]*\))?!?:/) {
-        fix_entries[++fix_count] = link
-      } else if (subject ~ /^(perf|refactor)(\([^)]*\))?!?:/) {
-        optimization_entries[++optimization_count] = link
-      } else if (subject ~ /^docs(\([^)]*\))?!?:/) {
-        docs_entries[++docs_count] = link
-      } else if (subject ~ /^[A-Za-z]+(\([^)]*\))?!?:/) {
-        other_entries[++other_count] = link
-      }
-    }
-
-    END {
-      section("破坏性变更", breaking_entries, breaking_count)
-      section("功能", feature_entries, feature_count)
-      section("修复", fix_entries, fix_count)
-      section("优化", optimization_entries, optimization_count)
-      section("文档", docs_entries, docs_count)
-      section("其他", other_entries, other_count)
-
-      print "## 完整变更"
-      if (from != "") {
-        compare_url = server "/" repo "/compare/" from "..." to
-        print "- [" from "..." to "](" compare_url ")"
-      } else {
-        print "- [初始版本 " to "](" server "/" repo "/commits/" to ")"
-      }
-    }
-  '
-```
-
-- [ ] **Step 4: 运行全部脚本测试**
-
-Run:
-
-```bash
-bash .github/scripts/test-release-scripts.sh
-```
-
-Expected:
-
-```text
-next-version tests: OK
-release-notes tests: OK
-```
-
-- [ ] **Step 5: 提交 Release Notes**
-
-```bash
-chmod +x .github/scripts/release-notes.sh
-git add .github/scripts/release-notes.sh .github/scripts/test-release-scripts.sh
-git commit -m "feat(ci): 生成中文发布说明"
-```
+历史步骤保留为叙述：先添加 Release Notes 失败测试，再实现 notes 生成并补充分组测试。当前实现以 `.github/scripts/release-notes.sh` 为准：它读取每个提交的 parent 列表，跳过拥有多个 parent 的 merge commit，并跳过非 Conventional Commits；测试以 `.github/scripts/test-release-scripts.sh` 为准。
 
 ### Task 3: CI 与自动发布 Workflow
 
@@ -662,7 +434,7 @@ git commit -m "feat(ci): 生成中文发布说明"
 - Create: `.github/workflows/ci.yml`
 - Create: `.github/workflows/release.yml`
 
-任务状态为已实施并发布；后续由 `1ea301c` 将 checkout 更新到 v5、启用 strict consistency，并在版本脚本启用 `--no-merges`。以下内容反映当前分支的最终行为；完整 YAML 始终以两个 workflow 文件为准。
+Task 3 的初始实现已随 `v1.1.0` 发布；`1ea301c` 将 checkout 更新到 v5、启用 strict consistency，并在版本脚本启用 `--no-merges`，属于当前分支上尚未合并的后续修正。以下 Step 1 和 Step 2 的 CI、prior-Release guard 与 Release classifier 片段均为 **as-built verified**，反映当前分支 workflow；完整 YAML 仍以 `.github/workflows/ci.yml` 和 `.github/workflows/release.yml` 为准。
 
 - [ ] **Step 1: 创建可复用 CI workflow**
 
@@ -933,36 +705,54 @@ gh pr merge 3 --merge
 
 实际执行结果：PR #3 head `061648290630e613b1c350c1006e71fcc5582b2e` 的 `Validate repository` check 成功，随后以 merge commit `7b2d299867ef5a034f5918233b9df915b8605bcb` 合入 `develop`。未直接 push `develop`。
 
-- [ ] **Step 3: 在 `develop` -> `main` 前补建 `v1.0.0` Release**
+- [ ] **Step 3: 在 `develop` -> `main` 前补建 prior Release（历史实例为 `v1.0.0`）**
 
 Run:
 
 ```bash
-status=0
-response="$(
-  gh api --include \
-    repos/george510257/glseven-docker/releases/tags/v1.0.0 2>&1
-)" || status=$?
-http_status="$(
-  printf '%s\n' "$response" |
-    awk '$1 ~ /^HTTP\// && !seen { print $2; seen = 1 }'
-)"
+backfill_missing_release() {
+  local missing_tag="${MISSING_TAG:?set MISSING_TAG to the tag reported by the prior-Release guard}"
+  local command_status=0
+  local response=""
+  local http_status=""
+  local tag_type=""
 
-if [[ "$status" -eq 0 && "$http_status" =~ ^2[0-9][0-9]$ ]]; then
-  echo "v1.0.0 Release already exists"
-elif [[ "$status" -ne 0 && "$http_status" == "404" ]]; then
-  gh release create v1.0.0 \
-    --verify-tag \
-    --title v1.0.0 \
-    --notes-from-tag
-else
+  response="$(
+    gh api --include \
+      "repos/$GITHUB_REPOSITORY/releases/tags/$missing_tag" 2>&1
+  )" || command_status=$?
+  http_status="$(
+    printf '%s\n' "$response" |
+      awk '$1 ~ /^HTTP\// && !seen { print $2; seen = 1 }'
+  )"
+
+  if [[ "$command_status" -eq 0 && "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "Release $missing_tag already exists"
+    return 0
+  fi
+  if [[ "$command_status" -ne 0 && "$http_status" == "404" ]]; then
+    tag_type="$(git cat-file -t "$missing_tag" 2>/dev/null || true)"
+    if [[ "$tag_type" != "tag" ]]; then
+      printf '%s is missing or is not an annotated tag; refusing backfill.\n' "$missing_tag" >&2
+      return 1
+    fi
+    gh release create "$missing_tag" \
+      --verify-tag \
+      --title "$missing_tag" \
+      --notes-from-tag
+    return 0
+  fi
+
   printf '%s\n' "$response" >&2
-  printf 'Cannot determine v1.0.0 Release state; refusing to continue.\n' >&2
-  exit 1
-fi
+  printf 'Cannot determine Release state for %s; refusing backfill.\n' "$missing_tag" >&2
+  return 1
+}
+
+MISSING_TAG=v1.0.0
+backfill_missing_release
 ```
 
-Expected: 只有显式 `404` 才补建；其他错误失败关闭。实际已用上述命令补建 `v1.0.0` Release，使用 annotated tag message 作为 notes。
+Expected: 只有显式 `404` 且 `git cat-file -t` 为 `tag` 才补建；其他错误失败关闭。实际已按该流程补建 `v1.0.0` Release，使用 annotated tag message 作为 notes。以后由 guard 报告其他缺失 tag 时，将报告中的 tag 赋给 `MISSING_TAG` 并重跑此函数。
 
 - [ ] **Step 4: 创建并合并 `develop` 到 `main` 的 PR**
 
@@ -1043,6 +833,135 @@ Expected:
 
 ---
 
+## 后续修复发布 runbook（预期 v1.1.1）
+
+> **状态：PENDING，尚未执行。** 当前分支包含 `1ea301c`、`1e8fadf`、`cab6a93` 及本次 review 修正提交；`1ea301c`、`1e8fadf` 仍未合并或发布。基于 `v1.1.0` 运行 `bash .github/scripts/next-version.sh` 当前得到 `version=v1.1.1`、`previous_tag=v1.1.0`、`bump=patch`；merge commit 不参与分类，普通 `fix` / `ci` 提交参与。
+
+1. 推送修复分支：
+
+```bash
+git push -u origin codex/ci-semver-release-fixes
+```
+
+2. 创建到 `develop` 的 PR：
+
+```bash
+fix_pr_url="$(
+  gh pr create \
+    --base develop \
+    --head codex/ci-semver-release-fixes \
+    --title "fix(ci): 修正语义版本发布与一致性门禁" \
+    --body "同步已验收的 CI/SemVer 文档，并合入 merge 排除、strict consistency、checkout v5 与失败摘要修正。"
+)"
+fix_pr="${fix_pr_url##*/}"
+```
+
+3. 等待 CI、检查结果，再 merge 到 `develop`：
+
+```bash
+gh pr checks "$fix_pr" --watch
+gh pr merge "$fix_pr" --merge
+```
+
+4. 等待 merge 后的 `develop` push CI：
+
+```bash
+develop_ci_run="$(
+  gh run list --workflow ci.yml --branch develop --limit 1 \
+    --json databaseId --jq '.[0].databaseId'
+)"
+gh run watch "$develop_ci_run" --exit-status
+gh run view "$develop_ci_run" --json status,conclusion,url
+```
+
+5. 创建 `develop` -> `main` PR，等待 CI 后 merge：
+
+```bash
+release_pr_url="$(
+  gh pr create \
+    --base main \
+    --head develop \
+    --title "chore(release): 发布 CI 修复并生成 v1.1.1" \
+    --body "合入已通过 develop CI 的发布修复；预期自动生成 v1.1.1。"
+)"
+release_pr="${release_pr_url##*/}"
+gh pr checks "$release_pr" --watch
+gh pr merge "$release_pr" --merge
+```
+
+6. 等待 Release workflow，并确认创建 `v1.1.1`：
+
+```bash
+release_run="$(
+  gh run list --workflow release.yml --branch main --limit 1 \
+    --json databaseId --jq '.[0].databaseId'
+)"
+gh run watch "$release_run" --exit-status
+gh run view "$release_run" --json status,conclusion,headSha,url
+git fetch --tags origin
+git tag --list 'v1.1.*'
+```
+
+Expected: Release run 成功；`v1.1.1` 出现，`v1.1.0` 保留；merge commit 本身没有导致额外 bump。
+
+7. 验证 annotated tag peel、Release body 与比较链接：
+
+```bash
+git cat-file -t v1.1.1
+git rev-parse v1.1.1^{}
+git rev-parse origin/main
+gh api repos/george510257/glseven-docker/releases/tags/v1.1.1 \
+  --jq '{tag_name,name,draft,prerelease,url,body}'
+```
+
+Expected: `git cat-file -t` 输出 `tag`；peel 后的 commit 与 `origin/main` 一致；Release 的 tag/name 为 `v1.1.1`，`draft=false`、`prerelease=false`；body 含 `修复`、文档变更和 `v1.1.0...v1.1.1` 比较链接。
+
+8. 重跑同一 Release workflow，验证幂等：
+
+```bash
+gh run rerun "$release_run"
+gh run watch "$release_run" --exit-status
+git fetch --tags origin
+git tag --list 'v1.1.*'
+gh api repos/george510257/glseven-docker/releases \
+  --paginate --jq '.[].tag_name' | sort
+```
+
+Expected: 重跑成功；tag 仅有 `v1.1.0`、`v1.1.1`，没有 `v1.1.2`；`v1.1.1` Release 只有一个，不产生重复。
+
+9. 可选：发布后执行 docs-only `main` 合并 dry run，确认 `release=false`：
+
+```bash
+git switch -c docs/ci-release-dry-run-20261023 origin/main
+printf '%s\n' '# CI release dry run' > docs/ci-release-dry-run.md
+git add docs/ci-release-dry-run.md
+git commit -m "docs(ci): 验证无版本发布"
+git push -u origin docs/ci-release-dry-run-20261023
+dry_pr_url="$(
+  gh pr create \
+    --base main \
+    --head docs/ci-release-dry-run-20261023 \
+    --title "docs(ci): 验证无版本发布" \
+    --body "仅文档变更；预期 Release workflow 跳过，不创建新 tag。"
+)"
+dry_pr="${dry_pr_url##*/}"
+gh pr checks "$dry_pr" --watch
+gh pr merge "$dry_pr" --merge
+dry_release_run="$(
+  gh run list --workflow release.yml --branch main --limit 1 \
+    --json databaseId --jq '.[0].databaseId'
+)"
+gh run watch "$dry_release_run" --exit-status
+gh run view "$dry_release_run" --log |
+  rg 'No releasable Conventional Commits found; skipping release\.'
+git fetch --tags origin
+git tag --list 'v1.1.*'
+```
+
+Expected: run 成功且输出跳过 release；`next-version.sh` 返回 `release=false` 语义；没有 `v1.1.2` 或新 Release。若需要删除 dry-run 文件，使用另一条 docs-only PR，同样不应产生版本。
+
+---
+
 ## 计划自检
 
 **Spec coverage**
@@ -1052,16 +971,18 @@ Expected:
 - SemVer 基线与 bump 优先级：Task 1 Step 3。
 - merge commit 排除与 merge 内普通提交仍参与：Task 1 Step 1、Step 3。
 - 跳过与 tag-on-HEAD 幂等：Task 1 Step 3、Task 4 Step 7。
-- 中文分组 Release Notes：Task 2 Step 3。
+- 中文分组 Release Notes：Task 2 历史说明与 `.github/scripts/release-notes.sh`。
 - prior-Release invariant、显式 `404` 与失败关闭：Task 3 Step 2、Task 4 Step 3。
 - 失败后重跑补 Release：Task 3 Step 2、Task 4 Step 5 至 Step 7。
 - 实际 PR #3、PR #4 与 `v1.1.0` 发布：Task 4 Step 2 至 Step 7。
 - 后续修复仍待 PR：Task 4 Step 8。
+- 通用 `MISSING_TAG` 回填：Task 4 Step 3 与设计文档第 7 节。
+- 预期 `v1.1.1` 的后续发布、幂等与 docs-only dry run：后续修复发布 runbook。
 - 不引入 npm、第三方发布 Action、PAT：文件结构与 workflows 均只使用 `actions/checkout`、Git 与 `gh`。
 
 **Placeholder scan**
 
-计划中的路径、脚本、workflow、命令与预期输出均为具体内容；没有占位符或未完成标记。
+除明确标注 `PENDING` 的 `v1.1.1` runbook 外，计划中的执行记录、路径、脚本、workflow 命令与预期输出均为具体内容，没有占位符。
 
 **Type and interface consistency**
 

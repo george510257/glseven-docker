@@ -25,7 +25,7 @@
 | CI 平台 | GitHub Actions |
 | 发布触发 | CI 通过后，push 到 `main` 自动发布 |
 | 版本规则 | `feat` 升 minor；`fix` / `perf` / `refactor` 升 patch；breaking change 升 major |
-| 无版本提交 | 仅 `docs` / `test` / `ci` / `chore` / `style` 时跳过发布 |
+| 无版本提交 | 仅 `docs` / `test` / `ci` / `chore` / `style` / `build` 或非 Conventional Commits 时跳过发布 |
 | CI 深度 | 静态校验；不启动整套服务 |
 | Release 内容 | 自动生成中文分组变更记录 |
 | 实现路径 | 原生 GitHub Actions + 仓库内 Bash 发布脚本 |
@@ -177,6 +177,52 @@ gh release create v1.0.0 --verify-tag --title v1.0.0 --notes-from-tag
 ```
 
 `--verify-tag` 要求 tag 已存在，`--notes-from-tag` 使用 annotated tag message 作为 Release notes。该步骤已完成。
+
+后续遇到任意 prior tag 缺失 Release 时，先按 guard 报告设置 `MISSING_TAG`，再执行以下只读分类与受控回填：
+
+```bash
+backfill_missing_release() {
+  local missing_tag="${MISSING_TAG:?set MISSING_TAG to the tag reported by the prior-Release guard}"
+  local command_status=0
+  local response=""
+  local http_status=""
+  local tag_type=""
+
+  response="$(
+    gh api --include \
+      "repos/$GITHUB_REPOSITORY/releases/tags/$missing_tag" 2>&1
+  )" || command_status=$?
+  http_status="$(
+    printf '%s\n' "$response" |
+      awk '$1 ~ /^HTTP\// && !seen { print $2; seen = 1 }'
+  )"
+
+  if [[ "$command_status" -eq 0 && "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "Release $missing_tag already exists"
+    return 0
+  fi
+  if [[ "$command_status" -ne 0 && "$http_status" == "404" ]]; then
+    tag_type="$(git cat-file -t "$missing_tag" 2>/dev/null || true)"
+    if [[ "$tag_type" != "tag" ]]; then
+      printf '%s is missing or is not an annotated tag; refusing backfill.\n' "$missing_tag" >&2
+      return 1
+    fi
+    gh release create "$missing_tag" \
+      --verify-tag \
+      --title "$missing_tag" \
+      --notes-from-tag
+    return 0
+  fi
+
+  printf '%s\n' "$response" >&2
+  printf 'Cannot determine Release state for %s; refusing backfill.\n' "$missing_tag" >&2
+  return 1
+}
+
+backfill_missing_release
+```
+
+该流程在创建前同时要求“命令失败 + 首个 HTTP 状态为 `404`”和 `git cat-file -t "$MISSING_TAG"` 输出 `tag`。`2xx` 表示已存在；非 `404` 错误、混合状态或响应解析失败均失败关闭，不得回填。
 
 失败语义：
 
