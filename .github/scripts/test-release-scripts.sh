@@ -77,7 +77,21 @@ assert_version_field() {
 }
 
 run_next_version_tests() {
-  local output
+  local base_branch output stderr status
+
+  new_repo
+  init_v1
+  base_branch="$(git symbolic-ref --short HEAD)"
+  git checkout -q -b unmerged-release
+  commit_file "fix(ci): 未合并分支上的发布"
+  git tag -a v1.0.1 -m "v1.0.1"
+  git checkout -q "$base_branch"
+  commit_file "fix(ci): 当前分支上的修复"
+  status=0
+  stderr="$(bash "$NEXT_VERSION" 2>&1 >/dev/null)" || status=$?
+  [[ "$status" -ne 0 ]] || fail "unreachable tag collision: expected nonzero exit"
+  assert_contains "$stderr" "v1.0.1" "unreachable tag collision"
+  assert_contains "$stderr" "not reachable from HEAD" "unreachable tag collision"
 
   new_repo
   init_v1
@@ -97,6 +111,33 @@ run_next_version_tests() {
   assert_version_field "$output" release true
   assert_version_field "$output" version v1.1.0
   assert_version_field "$output" bump minor
+
+  new_repo
+  init_v1
+  commit_file "fix(ci): 修复发布脚本"
+  commit_file "feat(portal): 增加统一入口"
+  commit_file $'chore: 调整内部结构\n\nBREAKING CHANGE: 配置格式不再兼容'
+  output="$(bash "$NEXT_VERSION")"
+  assert_version_field "$output" release true
+  assert_version_field "$output" version v2.0.0
+  assert_version_field "$output" previous_tag v1.0.0
+  assert_version_field "$output" bump major
+
+  new_repo
+  init_v1
+  commit_file "perf(ci): 优化构建流程"
+  output="$(bash "$NEXT_VERSION")"
+  assert_version_field "$output" release true
+  assert_version_field "$output" version v1.0.1
+  assert_version_field "$output" bump patch
+
+  new_repo
+  init_v1
+  commit_file "refactor(ci): 重构发布脚本"
+  output="$(bash "$NEXT_VERSION")"
+  assert_version_field "$output" release true
+  assert_version_field "$output" version v1.0.1
+  assert_version_field "$output" bump patch
 
   new_repo
   init_v1
@@ -133,6 +174,34 @@ run_next_version_tests() {
   assert_version_field "$output" version ""
   assert_version_field "$output" tag_on_head false
   assert_version_field "$output" previous_tag v1.0.0
+  assert_version_field "$output" bump none
+
+  new_repo
+  init_v1
+  git tag -a v1.2.3-rc.1 -m "v1.2.3-rc.1"
+  git tag -a v1.2.3+build -m "v1.2.3+build"
+  git tag -a v01.2.3 -m "v01.2.3"
+  git tag -a v1.2 -m "v1.2"
+  commit_file "fix(ci): 修复发布脚本"
+  output="$(bash "$NEXT_VERSION")"
+  assert_version_field "$output" release true
+  assert_version_field "$output" version v1.0.1
+  assert_version_field "$output" tag_on_head false
+  assert_version_field "$output" previous_tag v1.0.0
+  assert_version_field "$output" bump patch
+
+  new_repo
+  commit_file "chore: init"
+  git tag -a v1.2.3 -m "v1.2.3"
+  git tag -a v1.2.3-rc.1 -m "v1.2.3-rc.1"
+  git tag -a v1.2.3+build -m "v1.2.3+build"
+  git tag -a v01.2.3 -m "v01.2.3"
+  git tag -a v1.2 -m "v1.2"
+  output="$(bash "$NEXT_VERSION")"
+  assert_version_field "$output" release true
+  assert_version_field "$output" version v1.2.3
+  assert_version_field "$output" tag_on_head true
+  assert_version_field "$output" previous_tag ""
   assert_version_field "$output" bump none
 
   new_repo
