@@ -7,27 +7,31 @@
 前置：Docker Compose v2+（compose 文件使用顶层 `name:` 字段）。GPU 场景默认关闭，见下方「已知平台限制」的 ollama GPU 条目。
 
 ```shell
-# 1. 准备环境变量（.env 提供 REDIS_PASSWORD 等插值；DOCKER_VOLUME 可选）
-cp .env.example .env
+# 1. 选择配置档案（local = 本机；sit = 家里测试服务器）
+cp .env.local.example .env.local
+# sit：cp .env.sit.example .env.sit，并按机器修改 DOCKER_VOLUME / KAFKA_EXTERNAL_HOST
 
 # 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 24 个主机名（服务二级域名 = 容器名，门户为 portal，零别名）
 echo '127.0.0.1 portal.glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local iptv.glseven.local' | sudo tee -a /etc/hosts
 
-# 3. 启动：BASE 批次 → 等待 MySQL 健康 → DEFERRED 批次 → PORTAL
-bash startup.sh
+# 3. 启动：--profile 选择档案；首次必须显式指定，之后可省略（沿用 .glseven-profile）
+bash startup.sh --profile local
+# sit：bash startup.sh --profile sit
 
 # 4. 全部入口聚合在导航页（nginx 为唯一持有宿主端口的容器）
 open http://portal.glseven.local:8000
 
-# 停止：按启动逆序 down 并移除 glseven 网络
+# 停止：沿用上次档案；也可显式 bash shutdown.sh --profile sit
 bash shutdown.sh
 ```
 
+两套档案都已被 gitignore，只提交模板。切换档案只需改 `--profile`；启动横幅会打印实际档案与数据目录。直接运行 `docker compose` 时必须带 `--env-file .env.local`（或 `.env.sit`），否则会因缺少 `DOCKER_VOLUME` 明确报错。本机专属的 portal vhost 放 `portal/conf/conf.d/*.local.conf`（已 gitignore，不参与一致性校验），athena 即此类。
+
 存量环境升级时，需在 `/etc/hosts` 追加 `127.0.0.1 portal.glseven.local`。根域条目可以保留，`glseven.local:8000` 会自动 301 到新入口。
 
-数据目录优先级为：startup.sh 第一个参数 > 已导出的 `DOCKER_VOLUME` > 根 `.env` 的 `DOCKER_VOLUME` > 平台默认值。平台默认值在 Linux 为 `/docker/glseven`，在 macOS 为 `$HOME/docker/glseven`（macOS 根卷只读，不能使用 `/docker`）。也可显式指定：`bash startup.sh /data/glseven`。Linux 上需 root/sudo 执行（脚本将 nexus3/prometheus/grafana/elk 数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
+数据目录优先级为：显式数据目录参数 > 已导出的 `DOCKER_VOLUME` > 当前档案的 `DOCKER_VOLUME` > 平台默认值。平台默认值在 Linux 为 `/docker/glseven`，在 macOS 为 `$HOME/docker/glseven`（macOS 根卷只读，不能使用 `/docker`）。也可显式指定：`bash startup.sh --profile local /data/glseven`。Linux 上需 root/sudo 执行（脚本将 nexus3/prometheus/grafana/elk 数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
 
-修改 `REDIS_PASSWORD` 后需同时重建 redis 与 moontv：重新执行 `bash startup.sh` 即可。
+修改当前档案的 `REDIS_PASSWORD` 后需同时重建 redis 与 moontv：重新执行 `bash startup.sh`（沿用上次档案）即可。
 
 ## 六域结构与启动时序
 
@@ -83,6 +87,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 
 - **env 分层**：每个服务一个 `common/env/<service>.env`，compose 通过 `env_file` 引用；含默认凭据的文件顶部有 WARNING 注释，生产部署前必须修改。
 - **服务互访走服务名**（Docker DNS），不硬编码 IP；固定 IP 仅用于宿主侧排查与防火墙放行。
+- **配置档案**：`.env.local` / `.env.sit` 承载机器相关值（`DOCKER_VOLUME`、`KAFKA_EXTERNAL_HOST`、`REDIS_PASSWORD`），由 `startup.sh --profile` 选择；`*.local.conf` 为本机专属 vhost，二者均 gitignore。
 - **监控接入**：`prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。
 - **日志接入**：`filebeat`（observability 域，172.18.2.4）经 Docker 容器日志接口采集，直发 `elk:5044` 的 logstash；`elk/logstash/config/02-beats-input.conf` 覆盖镜像内置输入为**明文**（内置版要求 TLS）。Kibana 索引前缀为 `filebeat-`（非 `logstash-*`）。
 - **新增服务的同步点**：加一个服务要改 5 处——`docker-compose-<域>.yml`、`docker-compose-portal.yml`（ports）、`portal/conf/{conf.d,stream-conf.d}/<服务名>.conf`、`portal/html/index.html` 卡片、README 的 /etc/hosts 清单与访问矩阵。`common/check-consistency.sh`（preflight 第 8 步）会机械校验这些同步点，漏改会告警但不阻断启动。
@@ -118,10 +123,17 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 ### Kafka 双 listener（4.3.1）
 
 - 容器网络内：`PLAINTEXT://kafka:9092`（advertised 裸名），微服务客户端 bootstrap 地址写 `kafka:9092`。
-- 宿主/局域网：`EXTERNAL://:29092`，经 nginx stream 透传；advertised 地址在 `common/env/kafka.env`（默认 `127.0.0.1:29092`，本机 Docker Desktop 客户端直接用 `localhost:29092`）。
-- NAS 局域网其他机器接入：把 `common/env/kafka.env` 中 EXTERNAL advertised 的 `127.0.0.1` 改成 NAS IP，然后 `docker compose -f docker-compose-infra.yml up -d kafka` 重建。
+- 宿主/局域网：`EXTERNAL://:29092`，经 nginx stream 透传；advertised 地址由当前档案的 `KAFKA_EXTERNAL_HOST` 渲染（local 为 `127.0.0.1`，sit 为宿主局域网 IP）。
+- sit 接入：在 `.env.sit` 设置 `KAFKA_EXTERNAL_HOST` 后重建 kafka：`bash startup.sh --profile sit`，或 `docker compose --env-file .env.sit -f docker-compose-infra.yml up -d kafka`。
 - 9092 的 nginx stream 透传为存量兼容保留：旧 hosts 接入路径仍可用（PLAINTEXT advertised 仍为裸名），容器网络内客户端直连 `kafka:9092`（Docker DNS，不经 nginx）——但新接入一律走 29092，hosts 路径勿再新增依赖。
 - 旧「hosts 条目 `127.0.0.1 kafka`」workaround 已废弃，勿再使用。
+
+### Nacos 客户端 API 鉴权
+
+- 3.2.4 默认关闭客户端 SDK / gRPC / OpenAPI 鉴权；本编排通过 `NACOS_AUTH_ENABLE=true` 显式开启。
+- 控制台（8080）与 admin 鉴权一直默认开启；`NACOS_AUTH_TOKEN` / `NACOS_AUTH_IDENTITY_*` 是镜像 entrypoint 的必填项，不能删除。
+- 首次访问控制台时按提示初始化管理员用户 `nacos` 的密码；之后客户端需带凭据连接。
+- 回滚：只把 `NACOS_AUTH_ENABLE` 设为 `false` 并重建 nacos；不要删除 token/identity。
 
 ## 存量环境迁移（10 域 → 6 域，2026-09-08 重设计）
 
@@ -154,7 +166,7 @@ IP 变化会使容器全量重建；数据卷按 `DOCKER_VOLUME` 子目录绑定
 # 方案 A：保留数据——先在旧容器（未加 --auth 时）手工建 root 用户，再升级
 docker exec -it mongo mongosh admin --eval '
   db.createUser({user:"root",pwd:"root",roles:[{role:"root",db:"admin"}]})'
-# 确认建好后，再 docker compose -f docker-compose-infra.yml up -d mongo
+# 确认建好后，再 docker compose --env-file .env.local -f docker-compose-infra.yml up -d mongo（sit 用 .env.sit）
 
 # 方案 B：数据可弃——直接重建（会清空 mongo 数据）
 bash shutdown.sh && sudo rm -rf "$DOCKER_VOLUME/mongo/data" && bash startup.sh

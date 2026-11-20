@@ -11,17 +11,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 常用命令
 
 ```bash
-cp .env.example .env          # 首次与 CI 都需要；提供 REDIS_PASSWORD，DOCKER_VOLUME 可选
-bash startup.sh [数据目录]     # Linux 默认 /docker/glseven；macOS 默认 $HOME/docker/glseven
-bash shutdown.sh              # 按启动批次逆序 down（-t 60）并移除 glseven 网络
+cp .env.local.example .env.local   # local；sit 用 .env.sit.example → .env.sit
+bash startup.sh --profile local [数据目录]  # 首次必须指定，之后沿用 .glseven-profile
+bash shutdown.sh                           # 沿用上次档案；也可 --profile
 ```
 
 单域操作（六个 compose 文件都声明 `networks.glseven.external: true`，网络必须先存在）：
 
 ```bash
 docker network create --driver=bridge --subnet=172.18.0.0/16 glseven
-docker compose -f docker-compose-apps.yml up -d <service>
-docker compose -f docker-compose-apps.yml up -d --force-recreate <service>
+docker compose --env-file .env.local -f docker-compose-apps.yml up -d <service>
+docker compose --env-file .env.local -f docker-compose-apps.yml up -d --force-recreate <service>
 ```
 
 本地校验（与 CI 等价，提交前跑）：
@@ -31,7 +31,7 @@ while IFS= read -r -d '' f; do bash -n "$f"; done < <(git ls-files -z '*.sh')
 bash .github/scripts/test-docker-volume.sh
 bash .github/scripts/test-startup-platform.sh
 bash .github/scripts/test-release-scripts.sh
-for f in docker-compose-*.yml; do docker compose -f "$f" config -q; done
+for f in docker-compose-*.yml; do docker compose --env-file .env.local -f "$f" config -q; done
 bash common/check-consistency.sh --strict
 git diff --check
 ```
@@ -57,7 +57,7 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 
 **stream 上游在启动期静态解析服务名**，所以 portal 必须最后一批启动；不要提前单独拉起 nginx，也不要把它从批次里拆出来。
 
-**`startup.sh` 的职责比看起来多**：先 `source common/docker-volume.sh` 解析数据目录（优先级：位置参数 > 导出的 `DOCKER_VOLUME` > 根 `.env` > 平台默认），再跑 `common/preflight.sh` 的 8 个幂等步骤，然后按 `DIR_SPECS` 表创建数据目录并按容器 uid chown、恢复 `chmod 755`（fnOS/trimacl 会把新目录剥成 000），最后按批次拉起。新增非 root 容器时在 `DIR_SPECS` 加一行即可。Apple Silicon 上自动跳过 `elk`/`filebeat` 并继续其余服务。
+**`startup.sh` 的职责比看起来多**：先 `source common/profile.sh` 选择档案（`--profile` > `.glseven-profile`），再 `source common/docker-volume.sh` 解析数据目录（优先级：位置参数 > 导出的 `DOCKER_VOLUME` > 当前档案 > 平台默认），再跑 `common/preflight.sh` 的 8 个幂等步骤，然后按 `DIR_SPECS` 表创建数据目录并按容器 uid chown、恢复 `chmod 755`（fnOS/trimacl 会把新目录剥成 000），最后按批次拉起。新增非 root 容器时在 `DIR_SPECS` 加一行即可。Apple Silicon 上自动跳过 `elk`/`filebeat` 并继续其余服务。
 
 ## 新增或改名服务：5 个同步点
 
@@ -71,14 +71,15 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 
 ## CI 与发布
 
-- `.github/workflows/ci.yml`：PR 到 `develop`/`main` 与 push 到 `develop` 时运行；shell 语法、三个脚本测试、`compose config`、`check-consistency --strict`、改动行空白检查。`release.yml` 复用同一 workflow。
+- `.github/workflows/ci.yml`：PR 到 `develop`/`main` 与 push 到 `develop` 时运行；shell 语法、三个脚本测试、配置档案选择与 gitignore 断言、`compose config --env-file .env.local`、`check-consistency --strict`、改动行空白检查。`release.yml` 复用同一 workflow。
 - `.github/workflows/release.yml`：push 到 `main` 时先跑 CI，再由 `.github/scripts/next-version.sh` 按 Conventional Commits 计算版本，创建 annotated tag 与中文 GitHub Release（notes 由 `release-notes.sh` 生成）。同版本 tag 已存在但不可达 HEAD 会报错退出。
 - **提交类型直接决定发不发版**：`feat` → minor；`fix` / `perf` / `refactor` → patch；`<type>!:` 或正文 `BREAKING CHANGE:` → major；`docs` / `chore` / `ci` / `test` 等不触发发布。版本计算用 `git log --no-merges`：合并提交本身不计，但被合并分支上的提交计入。
 - 分支模型：`develop` 集成，`main` 发布；PR 通常指向 `develop`。提交信息用中文 + conventional 前缀；PR 描述写清影响服务、可见变化和已做验证。
 
 ## 约定与坑
 
-- **env 分层**：每服务一个 `common/env/<service>.env`，经 `env_file` 引用；含默认凭据的文件顶部有 `# WARNING:` 注释。**`env_file` 的值不被 Compose 插值**——凡需插值的（`${DOCKER_VOLUME}`、`${REDIS_PASSWORD}`）必须放在根 `.env`。既往踩坑记录见 `common/env/kafka.env` 注释。`.env` 已 gitignore，preflight 会把它收紧为 600。
+- **env 分层**：每服务一个 `common/env/<service>.env`，经 `env_file` 引用；含默认凭据的文件顶部有 `# WARNING:` 注释。**`env_file` 的值不被 Compose 插值**——凡需插值的（`${DOCKER_VOLUME}`、`${REDIS_PASSWORD}`）必须放在根 `.env`。既往踩坑记录见 `common/env/kafka.env` 注释。`.env.*` 档案已 gitignore，preflight 会收紧为 600。
+- **配置档案**：`.env.local` / `.env.sit` 承载机器相关值（`DOCKER_VOLUME`、`KAFKA_EXTERNAL_HOST`、`REDIS_PASSWORD`），由 `startup.sh --profile` 选择；直接跑 compose 必须带 `--env-file`。本机专属 vhost 用 `portal/conf/conf.d/*.local.conf`（gitignore，不参与一致性校验）。
 - **服务互访一律走服务名**（Docker DNS），不硬编码 IP。固定 IP 仅用于宿主侧排查与防火墙放行。
 - **共享 HTTP 端口**（3000 / 8080 / 8081）只绑定一次，按 `server_name` 分流；裸 IP 直连由 `00-default-catchall.conf` 302 到门户。
 - **修改 `REDIS_PASSWORD`** 后需同时重建 `redis` 与 `moontv`（`REDIS_URL` 未做百分号编码，口令避免 `/ ? # % @ '` 和空格）。
