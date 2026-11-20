@@ -34,7 +34,7 @@ jobs:
           done < <(git ls-files -z '*.sh')
 
       - name: Prepare Compose environment
-        run: cp .env.example .env
+        run: cp .env.local.example .env.local
 
       - name: Test Docker volume resolution
         run: bash .github/scripts/test-docker-volume.sh

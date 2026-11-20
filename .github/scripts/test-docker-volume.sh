@@ -90,7 +90,7 @@ assert_eq \
   SCRIPT_DIR="$TMP_ROOT/preflight"
   DOCKER_VOLUME="$home_dir/docker/glseven"
   mkdir -p "$SCRIPT_DIR"
-  cp "$ROOT_DIR/.env.example" "$SCRIPT_DIR/.env.example"
+  printf 'REDIS_PASSWORD=x\n' > "$SCRIPT_DIR/.env.example"
   # shellcheck source=../../common/preflight.sh
   source "$ROOT_DIR/common/preflight.sh"
   ensure_env_file >/dev/null
