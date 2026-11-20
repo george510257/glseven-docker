@@ -18,8 +18,8 @@ services:
       - common/env/common.env
       - common/env/openldap.env
     volumes:
-      - ${DOCKER_VOLUME:-/docker/glseven}/openldap/data:/var/lib/ldap
-      - ${DOCKER_VOLUME:-/docker/glseven}/openldap/config:/etc/ldap/slapd.d
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/openldap/data:/var/lib/ldap
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/openldap/config:/etc/ldap/slapd.d
       # admin-entry.ldif 经 osixia 官方种子通道（LDAP_SEED_INTERNAL_LDIF_PATH）注入：entrypoint 把
       # /seed-ldif 复制进容器内 custom ldif 目录，仅当数据库为空（fresh 卷首启初始化）时消费——
       # 提供 cn=admin（含 uid=admin，PLA uid 登录模式的前提，见文件头注释）；已初始化的库跳过，
@@ -57,8 +57,8 @@ services:
       - common/env/common.env
       - common/env/phpldapadmin.env
     volumes:
-      - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/sessions:/app/storage/framework/sessions
-      - ${DOCKER_VOLUME:-/docker/glseven}/phpldapadmin/logs:/app/storage/logs
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/phpldapadmin/sessions:/app/storage/framework/sessions
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/phpldapadmin/logs:/app/storage/logs
     depends_on:
       openldap:
         condition: service_healthy
