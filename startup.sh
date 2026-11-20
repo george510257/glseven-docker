@@ -6,10 +6,39 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=common/docker-volume.sh
 source "$SCRIPT_DIR/common/docker-volume.sh"
 
-# 优先级：位置参数 > 已导出的 DOCKER_VOLUME > 根 .env > 平台默认值。
+# 档案选择：--profile > .glseven-profile > 报错。
+PROFILE=""
+POSITIONAL_DIR=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profile|-p)
+      [ $# -ge 2 ] || { echo "Error: --profile requires a value"; exit 2; }
+      PROFILE="$2"; shift 2 ;;
+    --profile=*)
+      PROFILE="${1#*=}"; shift ;;
+    --*)
+      echo "Error: unknown option: $1"; exit 2 ;;
+    *)
+      POSITIONAL_DIR="$1"; shift ;;
+  esac
+done
+
+# shellcheck source=common/profile.sh
+source "$SCRIPT_DIR/common/profile.sh"
+PROFILE="$(select_profile "$SCRIPT_DIR" "$PROFILE")" || exit 1
+PROFILE_FILE="$(profile_file "$SCRIPT_DIR" "$PROFILE")"
+if [ ! -f "$PROFILE_FILE" ]; then
+  echo "Error: profile file not found: $PROFILE_FILE"
+  echo "Hint: cp ${PROFILE_FILE}.example ${PROFILE_FILE}"
+  exit 1
+fi
+printf '%s\n' "$PROFILE" > "$SCRIPT_DIR/$ACTIVE_PROFILE_FILE"
+export PROFILE PROFILE_FILE
+
+# 优先级：显式数据目录 > 已导出的 DOCKER_VOLUME > 档案 > 平台默认值。
 # macOS 根卷只读，因此无配置时落在 $HOME/docker/glseven，而不是 /docker。
 export DOCKER_VOLUME="$(
-  resolve_docker_volume "$SCRIPT_DIR" "${1:-}" "$(uname -s)" "$HOME"
+  resolve_docker_volume "$SCRIPT_DIR" "$POSITIONAL_DIR" "$(uname -s)" "$HOME" "$PROFILE_FILE"
 )"
 
 # shellcheck source=common/compose-list.sh
@@ -20,8 +49,13 @@ cd "$SCRIPT_DIR"
 
 echo "==========================================="
 echo "启动 GLSeven Docker 容器..."
+echo "Profile: $PROFILE"
 echo "DOCKER_VOLUME: $DOCKER_VOLUME"
 echo "==========================================="
+
+compose() {
+  docker compose --env-file "$PROFILE_FILE" "$@"
+}
 
 start_compose_group() {
   local group="$1"
@@ -31,11 +65,11 @@ start_compose_group() {
     is_apple_silicon "$(uname -s)" "$(uname -m)"; then
     echo "WARN: Apple Silicon cannot run the amd64 ELK image; skipping elk/filebeat."
     echo "WARN: observability continues with prometheus/grafana only."
-    docker compose -f "docker-compose-${group}.yml" stop elk filebeat >/dev/null 2>&1 || true
+    compose -f "docker-compose-${group}.yml" stop elk filebeat >/dev/null 2>&1 || true
     services=("${COMPOSE_SERVICES_OBSERVABILITY_APPLE_SILICON[@]}")
   fi
 
-  docker compose -f "docker-compose-${group}.yml" up -d "${services[@]}"
+  compose -f "docker-compose-${group}.yml" up -d "${services[@]}"
 }
 
 # 部署前置自愈与预检（幂等）：目录权限 / .env / vm.max_map_count / 孤儿网桥 / registry 镜像（ghcr+quay）/ 端口占用 / 日志轮转
