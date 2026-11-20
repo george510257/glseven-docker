@@ -65,6 +65,27 @@ assert_eq \
   "/docker/glseven" \
   "Linux fallback preserves /docker/glseven"
 
+env_local="$TMP_ROOT/volume-local.env"
+printf 'DOCKER_VOLUME=/from-local-profile\n' > "$env_local"
+assert_eq \
+  "$(resolve_docker_volume "$fixture" "" Darwin "$home_dir" "$env_local")" \
+  "/from-local-profile" \
+  "explicit env file is used"
+
+home_env="$TMP_ROOT/volume-home.env"
+printf 'DOCKER_VOLUME=$HOME/docker/glseven\n' > "$home_env"
+assert_eq \
+  "$(resolve_docker_volume "$fixture" "" Darwin "$home_dir" "$home_env")" \
+  "$home_dir/docker/glseven" \
+  "expands \$HOME prefix"
+
+tilde_env="$TMP_ROOT/volume-tilde.env"
+printf 'DOCKER_VOLUME=~/docker/glseven\n' > "$tilde_env"
+assert_eq \
+  "$(resolve_docker_volume "$fixture" "" Darwin "$home_dir" "$tilde_env")" \
+  "$home_dir/docker/glseven" \
+  "expands ~ prefix"
+
 (
   SCRIPT_DIR="$TMP_ROOT/preflight"
   DOCKER_VOLUME="$home_dir/docker/glseven"
