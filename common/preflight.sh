@@ -5,7 +5,7 @@
 #                          特别保护 rabbitmq 的 .erlang.cookie（erlang 强制要求 600 且属主为容器
 #                          内 rabbitmq uid=999，宽权限会导致 BOOT FAILED）。
 #                          并把 .env 收紧为 600（含全部组件凭据，不得因 go+rX 递归放权泄露）。
-# 2. ensure_env_file       .env 缺失时从 .env.example 生成并立即 chmod 600（本步在 1 之后执行）。
+# 2. ensure_profile_file   校验 .env.<profile> 存在且含非空 DOCKER_VOLUME/REDIS_PASSWORD，并 chmod 600。
 # 3. ensure_max_map_count  Linux 上保证 vm.max_map_count ≥ 262144（Elasticsearch bootstrap 硬性
 #                          要求，fnOS/Debian 默认 65530），过低则 sysctl -w 并持久化 /etc/sysctl.conf。
 # 4. clean_orphan_bridges  删除孤儿 docker 网桥（接口 br-<id> 存在但对应 network 已被删除）：
@@ -45,11 +45,13 @@ fix_dir_permissions() {
   preflight_on_linux || return 0
   echo "Preflight 1/8: fixing permissions..."
   chmod -R u+rwX,go+rX "$SCRIPT_DIR" 2>/dev/null || echo "WARN: chmod -R $SCRIPT_DIR failed (need root?), continuing..."
-  # .env 含全部组件凭据，不得因上面的 go+rX 递归放权被同机用户读取
-  # 用 if 而非 [ ] && cmd || echo：.env 不存在时后者会误报 chmod 失败，且 set -e 下短路链不可靠
-  if [ -f "$SCRIPT_DIR/.env" ]; then
-    chmod 600 "$SCRIPT_DIR/.env" 2>/dev/null || echo "WARN: chmod 600 $SCRIPT_DIR/.env failed, continuing..."
-  fi
+  # 档案含全部组件凭据，不得因上面的 go+rX 递归放权被同机用户读取
+  local envf
+  for envf in "$SCRIPT_DIR"/.env.*; do
+    case "$envf" in *.example) continue ;; esac
+    [ -f "$envf" ] || continue
+    chmod 600 "$envf" 2>/dev/null || echo "WARN: chmod 600 $envf failed, continuing..."
+  done
   if [ -d "$DOCKER_VOLUME" ]; then
     chmod u+rwX,go+rX "$DOCKER_VOLUME" 2>/dev/null || echo "WARN: chmod $DOCKER_VOLUME failed, continuing..."
     local cookie="$DOCKER_VOLUME/rabbitmq/data/.erlang.cookie"
@@ -60,19 +62,26 @@ fix_dir_permissions() {
   fi
 }
 
-# 2) .env 保障（compose 插值读取项目目录 .env；startup.sh 已解析并 export DOCKER_VOLUME，优先级更高）
-ensure_env_file() {
-  if [ ! -f "$SCRIPT_DIR/.env" ]; then
-    echo "Preflight 2/8: .env not found, generating from .env.example..."
-    cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env" || { echo "Error: failed to create $SCRIPT_DIR/.env"; exit 1; }
-    if ! grep -qE '^[[:space:]]*(export[[:space:]]+)?DOCKER_VOLUME=' "$SCRIPT_DIR/.env"; then
-      printf '\n# Persisted by startup.sh so direct docker compose commands use the same path.\nDOCKER_VOLUME=%s\n' \
-        "$DOCKER_VOLUME" >> "$SCRIPT_DIR/.env"
-    fi
-    # 本步在 fix_dir_permissions 之后执行，新生 .env（默认 644）需立即收紧
-    chmod 600 "$SCRIPT_DIR/.env" 2>/dev/null || echo "WARN: chmod 600 $SCRIPT_DIR/.env failed, continuing..."
-    echo "WARN: review $SCRIPT_DIR/.env and common/env/*.env for default credentials before production use."
+# 2) 配置档案校验（PROFILE_FILE 由 startup.sh / shutdown.sh 选择并导出）
+ensure_profile_file() {
+  if [ -z "${PROFILE_FILE:-}" ]; then
+    echo "Error: PROFILE_FILE is not set (internal)" >&2
+    exit 1
   fi
+  if [ ! -f "$PROFILE_FILE" ]; then
+    echo "Error: profile file not found: $PROFILE_FILE" >&2
+    echo "Hint: cp ${PROFILE_FILE}.example ${PROFILE_FILE}" >&2
+    exit 1
+  fi
+  local key
+  for key in DOCKER_VOLUME REDIS_PASSWORD; do
+    if ! grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=[^[:space:]]" "$PROFILE_FILE"; then
+      echo "Error: $key is missing or empty in $PROFILE_FILE" >&2
+      echo "Hint: cp ${PROFILE_FILE}.example ${PROFILE_FILE}" >&2
+      exit 1
+    fi
+  done
+  chmod 600 "$PROFILE_FILE" 2>/dev/null || echo "WARN: chmod 600 $PROFILE_FILE failed, continuing..."
 }
 
 # 3) vm.max_map_count（仅过低时修改；已达标则跳过，重复执行无害）
@@ -196,10 +205,10 @@ check_service_consistency() {
 
 run_preflight() {
   echo "-------------------------------------------"
-  echo "Preflight: permissions / env / sysctl / bridges / registry images / ports / log rotation / consistency"
+  echo "Preflight: permissions / profile / sysctl / bridges / registry images / ports / log rotation / consistency"
   echo "-------------------------------------------"
   fix_dir_permissions
-  ensure_env_file
+  ensure_profile_file
   ensure_max_map_count
   clean_orphan_bridges
   pull_registry_images

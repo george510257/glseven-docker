@@ -87,15 +87,17 @@ assert_eq \
   "expands ~ prefix"
 
 (
-  SCRIPT_DIR="$TMP_ROOT/preflight"
-  DOCKER_VOLUME="$home_dir/docker/glseven"
+  SCRIPT_DIR="$TMP_ROOT/preflight-profile"
   mkdir -p "$SCRIPT_DIR"
-  printf 'REDIS_PASSWORD=x\n' > "$SCRIPT_DIR/.env.example"
+  PROFILE_FILE="$SCRIPT_DIR/.env.local"
+  printf 'DOCKER_VOLUME=/tmp/glseven\nREDIS_PASSWORD=x\n' > "$PROFILE_FILE"
   # shellcheck source=../../common/preflight.sh
   source "$ROOT_DIR/common/preflight.sh"
-  ensure_env_file >/dev/null
-  grep -qx "DOCKER_VOLUME=$DOCKER_VOLUME" "$SCRIPT_DIR/.env" ||
-    fail "generated .env does not persist resolved DOCKER_VOLUME"
+  ensure_profile_file >/dev/null
 )
+printf 'DOCKER_VOLUME=/tmp/glseven\n' > "$TMP_ROOT/preflight-profile/.env.local"
+if ( PROFILE_FILE="$TMP_ROOT/preflight-profile/.env.local"; source "$ROOT_DIR/common/preflight.sh"; ensure_profile_file ) 2>/dev/null; then
+  fail "profile missing REDIS_PASSWORD must fail"
+fi
 
 printf 'docker-volume tests: OK\n'
