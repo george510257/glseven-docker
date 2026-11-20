@@ -47,6 +47,7 @@ INTERNAL_ONLY="filebeat"
 is_in() { local n="$1" list="$2"; [[ " $list " == *" $n "* ]]; }
 
 issues=0
+skipped=0
 warn() { echo "  [!] $*"; issues=$((issues + 1)); }
 
 # 从全部 compose 文件提取服务的 container_name / hostname 对。
@@ -78,6 +79,9 @@ if [[ -n "$services" ]]; then
 
   # 2) conf.d 里出现的每个 server_name 子域名，都应有同名容器（抓孤立 vhost / 改名后遗留）
   for f in portal/conf/conf.d/*.conf; do
+    case "$f" in
+      *.local.conf) skipped=$((skipped + 1)); continue ;;
+    esac
     for sub in $(grep -hoE 'server_name[[:space:]]+[a-z0-9.-]+\.glseven\.local' "$f" | awk '{print $2}' | sed 's/\.glseven\.local$//' | sort -u); do
       [[ -z "$sub" ]] && continue
       expected_sub="$sub"
@@ -85,6 +89,7 @@ if [[ -n "$services" ]]; then
       is_in "$expected_sub" "$(echo "$services" | tr '\n' ' ')" || warn "$(basename "$f")：server_name $sub.glseven.local 无对应容器"
     done
   done
+  [ "$skipped" -gt 0 ] && echo "  consistency: 跳过 $skipped 个本地配置"
 
   # 3) 有 HTTP 入口的服务应在门户页有卡片
   for svc in $services; do
