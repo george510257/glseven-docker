@@ -22,4 +22,10 @@ if select_profile "$tmp" '' 2>/dev/null; then fail "missing profile must fail"; 
 if select_profile "$tmp" '../x' 2>/dev/null; then fail "invalid explicit must fail"; fi
 [ "$(profile_file "$tmp" sit)" = "$tmp/.env.sit" ] || fail "profile_file path"
 
+( PROFILE_SET=1 PROFILE=local; require_profile_value ) || fail "non-empty explicit profile must pass"
+( PROFILE_SET=0 PROFILE=''; require_profile_value ) || fail "unset profile flag must pass"
+if ( PROFILE_SET=1 PROFILE=''; require_profile_value ) 2>/dev/null; then
+  fail "empty explicit profile must fail"
+fi
+
 printf 'profile tests: OK\n'

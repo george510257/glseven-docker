@@ -100,4 +100,23 @@ if ( PROFILE_FILE="$TMP_ROOT/preflight-profile/.env.local"; source "$ROOT_DIR/co
   fail "profile missing REDIS_PASSWORD must fail"
 fi
 
+permissions_dir="$TMP_ROOT/permissions"
+mkdir -p "$permissions_dir"
+printf 'x\n' > "$permissions_dir/.env"
+printf 'x\n' > "$permissions_dir/.env.local"
+printf 'x\n' > "$permissions_dir/.env.local.example"
+chmod 644 "$permissions_dir/.env" "$permissions_dir/.env.local" "$permissions_dir/.env.local.example"
+(
+  SCRIPT_DIR="$permissions_dir"
+  # shellcheck source=../../common/preflight.sh
+  source "$ROOT_DIR/common/preflight.sh"
+  tighten_env_permissions
+)
+file_mode() {
+  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+}
+[ "$(file_mode "$permissions_dir/.env")" = "600" ] || fail "legacy .env must be chmod 600"
+[ "$(file_mode "$permissions_dir/.env.local")" = "600" ] || fail "profile must be chmod 600"
+[ "$(file_mode "$permissions_dir/.env.local.example")" = "644" ] || fail "example must keep its mode"
+
 printf 'docker-volume tests: OK\n'

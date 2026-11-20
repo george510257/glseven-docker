@@ -9,6 +9,14 @@ profile_file() {
   printf '%s/.env.%s\n' "$1" "$2"
 }
 
+require_profile_value() {
+  if [ "${PROFILE_SET:-0}" -eq 1 ] && [ -z "${PROFILE:-}" ]; then
+    printf 'Error: profile name must not be empty\n' >&2
+    return 1
+  fi
+  return 0
+}
+
 select_profile() {
   local script_dir="$1" explicit="${2:-}" saved=""
   if [ -n "$explicit" ]; then

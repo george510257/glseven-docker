@@ -7,11 +7,13 @@ This is a Docker Compose infrastructure repository, not an application codebase.
 ## Build, Test, and Development Commands
 
 ```bash
-cp .env.example .env
-bash startup.sh [data-directory]
+cp .env.local.example .env.local
+bash startup.sh --profile local [data-directory]
 bash shutdown.sh
-for file in docker-compose-*.yml; do docker compose -f "$file" config -q; done
+for file in docker-compose-*.yml; do docker compose --env-file .env.local -f "$file" config -q; done
 bash common/check-consistency.sh
+bash .github/scripts/test-profile.sh
+bash .github/scripts/test-env-config.sh
 ```
 
 `startup.sh` runs preflight checks, creates volumes and the `glseven` network, then starts domains in batches. `shutdown.sh` stops them in reverse order. The two validation commands check Compose syntax and cross-file portal consistency. There is no application build or unit-test suite.
@@ -35,4 +37,4 @@ Follow Conventional Commits with Chinese descriptions, as in `fix(security): ...
 
 ## Security & Configuration Tips
 
-Keep real credentials out of tracked files. Root `.env` is ignored and holds interpolated values such as `DOCKER_VOLUME` and `REDIS_PASSWORD`. Treat `common/env/*` defaults as development-only and preserve their production warnings. Do not reuse this isolated development exposure model, especially etcd, in production.
+Keep real credentials out of tracked files. Profile files (`.env.local` / `.env.sit`) are ignored and hold per-machine values such as `DOCKER_VOLUME`, `KAFKA_EXTERNAL_HOST`, and `REDIS_PASSWORD`; only `*.example` templates are tracked. Treat `common/env/*` defaults as development-only and preserve their production warnings. Do not reuse this isolated development exposure model, especially etcd, in production.

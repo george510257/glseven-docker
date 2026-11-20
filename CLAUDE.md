@@ -29,14 +29,16 @@ docker compose --env-file .env.local -f docker-compose-apps.yml up -d --force-re
 ```bash
 while IFS= read -r -d '' f; do bash -n "$f"; done < <(git ls-files -z '*.sh')
 bash .github/scripts/test-docker-volume.sh
+bash .github/scripts/test-profile.sh
 bash .github/scripts/test-startup-platform.sh
 bash .github/scripts/test-release-scripts.sh
+bash .github/scripts/test-env-config.sh
 for f in docker-compose-*.yml; do docker compose --env-file .env.local -f "$f" config -q; done
 bash common/check-consistency.sh --strict
 git diff --check
 ```
 
-`test-*.sh` 只需要 bash 与 git（发布脚本测试会在临时 git 仓库里造提交），无 Docker 也能跑；`compose config` 需要 Docker CLI 和 `.env`。三个脚本都必须保持 macOS 自带 Bash 3.2 兼容。
+`test-*.sh` 只需要 bash 与 git（发布脚本测试会在临时 git 仓库里造提交），无 Docker 也能跑；`compose config` 需要 Docker CLI 和当前档案（如 `.env.local`）。四个脚本都必须保持 macOS 自带 Bash 3.2 兼容。
 
 运行时验证：
 
@@ -78,7 +80,7 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 
 ## 约定与坑
 
-- **env 分层**：每服务一个 `common/env/<service>.env`，经 `env_file` 引用；含默认凭据的文件顶部有 `# WARNING:` 注释。**`env_file` 的值不被 Compose 插值**——凡需插值的（`${DOCKER_VOLUME}`、`${REDIS_PASSWORD}`）必须放在根 `.env`。既往踩坑记录见 `common/env/kafka.env` 注释。`.env.*` 档案已 gitignore，preflight 会收紧为 600。
+- **env 分层**：每服务一个 `common/env/<service>.env`，经 `env_file` 引用；含默认凭据的文件顶部有 `# WARNING:` 注释。**`env_file` 的值不被 Compose 插值**——凡需插值的（`${DOCKER_VOLUME}`、`${REDIS_PASSWORD}`）必须放在当前档案 `.env.<profile>`。既往踩坑记录见 `common/env/kafka.env` 注释。`.env.*` 档案已 gitignore，preflight 会收紧为 600。
 - **配置档案**：`.env.local` / `.env.sit` 承载机器相关值（`DOCKER_VOLUME`、`KAFKA_EXTERNAL_HOST`、`REDIS_PASSWORD`），由 `startup.sh --profile` 选择；直接跑 compose 必须带 `--env-file`。本机专属 vhost 用 `portal/conf/conf.d/*.local.conf`（gitignore，不参与一致性校验）。
 - **服务互访一律走服务名**（Docker DNS），不硬编码 IP。固定 IP 仅用于宿主侧排查与防火墙放行。
 - **共享 HTTP 端口**（3000 / 8080 / 8081）只绑定一次，按 `server_name` 分流；裸 IP 直连由 `00-default-catchall.conf` 302 到门户。

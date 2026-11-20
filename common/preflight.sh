@@ -39,6 +39,16 @@ PREFLIGHT_LOG_MAX_FILE=3
 
 preflight_on_linux() { [ "$(uname -s)" = "Linux" ]; }
 
+# 收紧含凭据的 .env 与 .env.*（保留 *.example 的可读性）
+tighten_env_permissions() {
+  local envf
+  for envf in "$SCRIPT_DIR/.env" "$SCRIPT_DIR"/.env.*; do
+    case "$envf" in *.example) continue ;; esac
+    [ -f "$envf" ] || continue
+    chmod 600 "$envf" 2>/dev/null || echo "WARN: chmod 600 $envf failed, continuing..."
+  done
+}
+
 # 1) 目录权限：部署目录递归修复（代码文件体积小）；数据目录仅修顶层（深层目录由 startup.sh 的
 #    mkdir/chown_dir 与容器自建生成，且数据目录可能很大不宜每次 -R 遍历）
 fix_dir_permissions() {
@@ -46,12 +56,7 @@ fix_dir_permissions() {
   echo "Preflight 1/8: fixing permissions..."
   chmod -R u+rwX,go+rX "$SCRIPT_DIR" 2>/dev/null || echo "WARN: chmod -R $SCRIPT_DIR failed (need root?), continuing..."
   # 档案含全部组件凭据，不得因上面的 go+rX 递归放权被同机用户读取
-  local envf
-  for envf in "$SCRIPT_DIR"/.env.*; do
-    case "$envf" in *.example) continue ;; esac
-    [ -f "$envf" ] || continue
-    chmod 600 "$envf" 2>/dev/null || echo "WARN: chmod 600 $envf failed, continuing..."
-  done
+  tighten_env_permissions
   if [ -d "$DOCKER_VOLUME" ]; then
     chmod u+rwX,go+rX "$DOCKER_VOLUME" 2>/dev/null || echo "WARN: chmod $DOCKER_VOLUME failed, continuing..."
     local cookie="$DOCKER_VOLUME/rabbitmq/data/.erlang.cookie"

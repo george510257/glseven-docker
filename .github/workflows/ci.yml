@@ -39,6 +39,9 @@ jobs:
       - name: Test profile selection
         run: bash .github/scripts/test-profile.sh
 
+      - name: Test env config invariants
+        run: bash .github/scripts/test-env-config.sh
+
       - name: Assert profiles are ignored
         shell: bash
         run: |

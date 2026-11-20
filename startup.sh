@@ -8,14 +8,15 @@ source "$SCRIPT_DIR/common/docker-volume.sh"
 
 # 档案选择：--profile > .glseven-profile > 报错。
 PROFILE=""
+PROFILE_SET=0
 POSITIONAL_DIR=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile|-p)
       [ $# -ge 2 ] || { echo "Error: --profile requires a value"; exit 2; }
-      PROFILE="$2"; shift 2 ;;
+      PROFILE="$2"; PROFILE_SET=1; shift 2 ;;
     --profile=*)
-      PROFILE="${1#*=}"; shift ;;
+      PROFILE="${1#*=}"; PROFILE_SET=1; shift ;;
     --*)
       echo "Error: unknown option: $1"; exit 2 ;;
     *)
@@ -25,11 +26,16 @@ done
 
 # shellcheck source=common/profile.sh
 source "$SCRIPT_DIR/common/profile.sh"
+require_profile_value || exit 2
 PROFILE="$(select_profile "$SCRIPT_DIR" "$PROFILE")" || exit 1
 PROFILE_FILE="$(profile_file "$SCRIPT_DIR" "$PROFILE")"
 if [ ! -f "$PROFILE_FILE" ]; then
   echo "Error: profile file not found: $PROFILE_FILE"
-  echo "Hint: cp ${PROFILE_FILE}.example ${PROFILE_FILE}"
+  if [ -f "${PROFILE_FILE}.example" ]; then
+    echo "Hint: cp ${PROFILE_FILE}.example ${PROFILE_FILE}"
+  else
+    echo "Hint: create ${PROFILE_FILE} (see .env.local.example for the keys)"
+  fi
   exit 1
 fi
 printf '%s\n' "$PROFILE" > "$SCRIPT_DIR/$ACTIVE_PROFILE_FILE"
