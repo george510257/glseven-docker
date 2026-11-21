@@ -31,7 +31,7 @@ bash shutdown.sh
 
 ## 六域结构与启动时序
 
-| 域（compose 文件） | 服务（容器内固定 IP 末位） | IP 段 | 启动批次 |
+| 域（包） | 服务（容器内固定 IP 末位） | IP 段 | 启动批次 |
 |---|---|---|---|
 | infra | mysql .1、redis .2、mongo .3、mongo-express .4、adminer .5、rabbitmq .6、kafka .7、etcd .8 | 172.18.1.x | BASE |
 | observability | prometheus .1、grafana .2、elk .3、filebeat .4 | 172.18.2.x | BASE |
@@ -40,6 +40,8 @@ bash shutdown.sh
 | apps | ollama .1、open-webui .2、moontv .3、iptv .4 | 172.18.5.x | DEFERRED |
 | portal | nginx .1 | 172.18.6.x | PORTAL |
 
+每个域一个目录：compose 为 `<域>/docker-compose.yml`，该域服务 env 在 `<域>/env/`，配置目录与 compose 同包。
+
 批次时序（`common/compose-list.sh` 是唯一数据源，startup.sh / shutdown.sh 消费）：
 
 - **BASE**：先起数据、消息与监控底座。
@@ -47,6 +49,8 @@ bash shutdown.sh
 - **DEFERRED**：keycloak / nacos / xxl-job-admin 依赖 MySQL 完成初始化。
 - **PORTAL**：最后启动导航门户（保证导航目标先就绪）。
 - 跨 compose project 的依赖不写 `depends_on`（Docker 不支持跨文件引用），由批次时序 + `restart: always` 兜底。
+
+> **命令迁移**：旧命令 `docker compose -f docker-compose-<域>.yml ...` 已改为 `docker compose --env-file .env -f <域>/docker-compose.yml ...`；`--env-file` 必须带，否则根 `.env` 中的 `REDIS_PASSWORD` 不会被读取。
 
 ## 服务访问入口
 
@@ -81,11 +85,11 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 
 ## 配置约定
 
-- **env 分层**：每个服务一个 `common/env/<service>.env`，compose 通过 `env_file` 引用；含默认凭据的文件顶部有 WARNING 注释，生产部署前必须修改。
+- **env 分层**：每个服务一个 `<域>/env/<service>.env`，compose 通过 `env_file` 引用；含默认凭据的文件顶部有 WARNING 注释，生产部署前必须修改。
 - **服务互访走服务名**（Docker DNS），不硬编码 IP；固定 IP 仅用于宿主侧排查与防火墙放行。
 - **监控接入**：`prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。
 - **日志接入**：`filebeat`（observability 域，172.18.2.4）经 Docker 容器日志接口采集，直发 `elk:5044` 的 logstash；`elk/logstash/config/02-beats-input.conf` 覆盖镜像内置输入为**明文**（内置版要求 TLS）。Kibana 索引前缀为 `filebeat-`（非 `logstash-*`）。
-- **新增服务的同步点**：加一个服务要改 5 处——`docker-compose-<域>.yml`、`docker-compose-portal.yml`（ports）、`portal/conf/{conf.d,stream-conf.d}/<服务名>.conf`、`portal/html/index.html` 卡片、README 的 /etc/hosts 清单与访问矩阵。`common/check-consistency.sh`（preflight 第 8 步）会机械校验这些同步点，漏改会告警但不阻断启动。
+- **新增服务的同步点**：加一个服务要改 5 处——`<域>/docker-compose.yml`、`portal/docker-compose.yml`（ports）、`portal/conf/{conf.d,stream-conf.d}/<服务名>.conf`、`portal/html/index.html` 卡片、README 的 /etc/hosts 清单与访问矩阵。`common/check-consistency.sh`（preflight 第 8 步）会机械校验这些同步点，漏改会告警但不阻断启动。
 
 ## 容器日志轮转与 etcd 风险边界
 
@@ -97,7 +101,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 ### Keycloak 26.7.3
 
 - `start-dev` 官方开发模式（免 TLS/hostname 配置），数据全部在 MySQL `keycloak` 库（容器无状态不挂数据卷）。
-- bootstrap admin 凭据见 `common/env/keycloak.env`（仅首次启动生效；WARNING：生产前必须修改）。
+- bootstrap admin 凭据见 `security/env/keycloak.env`（仅首次启动生效；WARNING：生产前必须修改）。
 - 健康与指标端口 9000 由 `KC_HEALTH_ENABLED` + `KC_METRICS_ENABLED` 开启（仅容器网络内，供探针与 Prometheus 抓取）。
 
 ### APISIX 3.18.0
@@ -118,8 +122,8 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 ### Kafka 双 listener（4.3.1）
 
 - 容器网络内：`PLAINTEXT://kafka:9092`（advertised 裸名），微服务客户端 bootstrap 地址写 `kafka:9092`。
-- 宿主/局域网：`EXTERNAL://:29092`，经 nginx stream 透传；advertised 地址在 `common/env/kafka.env`（默认 `127.0.0.1:29092`，本机 Docker Desktop 客户端直接用 `localhost:29092`）。
-- NAS 局域网其他机器接入：把 `common/env/kafka.env` 中 EXTERNAL advertised 的 `127.0.0.1` 改成 NAS IP，然后 `docker compose -f docker-compose-infra.yml up -d kafka` 重建。
+- 宿主/局域网：`EXTERNAL://:29092`，经 nginx stream 透传；advertised 地址在 `infra/env/kafka.env`（默认 `127.0.0.1:29092`，本机 Docker Desktop 客户端直接用 `localhost:29092`）。
+- NAS 局域网其他机器接入：把 `infra/env/kafka.env` 中 EXTERNAL advertised 的 `127.0.0.1` 改成 NAS IP，然后 `docker compose --env-file .env -f infra/docker-compose.yml up -d kafka` 重建。
 - 9092 的 nginx stream 透传为存量兼容保留：旧 hosts 接入路径仍可用（PLAINTEXT advertised 仍为裸名），容器网络内客户端直连 `kafka:9092`（Docker DNS，不经 nginx）——但新接入一律走 29092，hosts 路径勿再新增依赖。
 - 旧「hosts 条目 `127.0.0.1 kafka`」workaround 已废弃，勿再使用。
 
@@ -144,7 +148,7 @@ IP 变化会使容器全量重建；数据卷按 `DOCKER_VOLUME` 子目录绑定
 
 **1. mongo 启用认证 → 存量无认证卷会锁死**
 
-`docker-compose-infra.yml` 的 mongo 新增了 `command: --auth`，让 `common/env/mongo.env` 的
+`infra/docker-compose.yml` 的 mongo 新增了 `command: --auth`，让 `infra/env/mongo.env` 的
 `MONGO_INITDB_ROOT_*` 真正生效（此前未启用 auth，该变量只是建了个没人用的用户）。
 
 **但 `MONGO_INITDB_ROOT_*` 只在空数据卷首次初始化时创建用户。** 存量卷若已有数据（在无认证状态下建的），
@@ -154,7 +158,7 @@ IP 变化会使容器全量重建；数据卷按 `DOCKER_VOLUME` 子目录绑定
 # 方案 A：保留数据——先在旧容器（未加 --auth 时）手工建 root 用户，再升级
 docker exec -it mongo mongosh admin --eval '
   db.createUser({user:"root",pwd:"root",roles:[{role:"root",db:"admin"}]})'
-# 确认建好后，再 docker compose -f docker-compose-infra.yml up -d mongo
+# 确认建好后，再 docker compose --env-file .env -f infra/docker-compose.yml up -d mongo
 
 # 方案 B：数据可弃——直接重建（会清空 mongo 数据）
 bash shutdown.sh && sudo rm -rf "$DOCKER_VOLUME/mongo/data" && bash startup.sh
@@ -163,7 +167,7 @@ bash shutdown.sh && sudo rm -rf "$DOCKER_VOLUME/mongo/data" && bash startup.sh
 **2. kafka 数据开始落盘 → 存量数据在容器可写层，升级即丢**
 
 kafka 此前未设 `KAFKA_LOG_DIRS`，数据实际写在 `/tmp/kafka-logs`（容器可写层），
-每次 `shutdown.sh` 全部丢失。现已在 `common/env/kafka.env` 补上 `KAFKA_LOG_DIRS=/var/lib/kafka/data`
+每次 `shutdown.sh` 全部丢失。现已在 `infra/env/kafka.env` 补上 `KAFKA_LOG_DIRS=/var/lib/kafka/data`
 与固定 `KAFKA_CLUSTER_ID`，数据开始落宿主机卷。
 
 首次重建后角色相反：**此前容器可写层里的数据不会被迁移**，重建即丢一次（本就留不住）；
@@ -206,8 +210,8 @@ flush privileges;
 
 - **elk**（sebp/elk，amd64-only 镜像）：Apple Silicon macOS 的 Rosetta 模拟层不翻译 seccomp 系统调用，Elasticsearch 9 启动即失败（错误特征 `seccomp unavailable: CONFIG_SECCOMP not compiled into kernel`）；Linux amd64 主机正常。内存受限环境可通过 `ES_JAVA_OPTS` / `LS_JAVA_OPTS` 降低 JVM 堆。
 - **Portainer 初始化**：创建 admin 前需从容器日志取 Setup token（`docker logs portainer 2>&1 | grep setup_token`，每次重启会刷新）；且 5 分钟未完成初始化会自动锁定（页面不可操作），需 `docker restart portainer` 后用新 token 重来。初始化请求经 nginx 时需保留原始 Host 头（已在 snippets/proxy.conf 用 `$http_host` 配置）。
-- **phpLDAPadmin 登录**：登录者必须是目录内真实条目，而 osixia/openldap 只把 `cn=admin` 设为 olcRootDN（DB 级 bind 凭据，无目录条目），因此仓库附 `openldap/bootstrap/admin-entry.ldif`（含 `uid=admin`），首次初始化卷后需导入一次（命令见该文件头注释），导入后 USER ID 填 `admin` 登录（bind 实际走 olcRootDN，具全权）。登录后若见一次 500 页，刷新即可（登录表单闪存残留，一次性）。另：PLA 检索用户需绑定搜索账号（默认 ACL 拒匿名读），见 `common/env/phpldapadmin.env`。
+- **phpLDAPadmin 登录**：登录者必须是目录内真实条目，而 osixia/openldap 只把 `cn=admin` 设为 olcRootDN（DB 级 bind 凭据，无目录条目），因此仓库附 `security/openldap/bootstrap/admin-entry.ldif`（含 `uid=admin`），首次初始化卷后需导入一次（命令见该文件头注释），导入后 USER ID 填 `admin` 登录（bind 实际走 olcRootDN，具全权）。登录后若见一次 500 页，刷新即可（登录表单闪存残留，一次性）。另：PLA 检索用户需绑定搜索账号（默认 ACL 拒匿名读），见 `security/env/phpldapadmin.env`。
 - **Registry :5000**：端口绑定主体是 nginx（portal），但 macOS 上该端口仍可能被 AirPlay Receiver（ControlCenter 进程）占用导致容器启动报 `port is already allocated`，需在系统设置关闭 AirPlay Receiver（全栈唯一需宿主侧配合的端口）。
-- **ollama GPU**：GPU 请求默认关闭（docker-compose-apps.yml 中 `deploy.resources.reservations` 为注释块）。Linux 宿主如需 GPU 加速，取消该注释块后 `docker compose -f docker-compose-apps.yml up -d ollama`，要求 NVIDIA 驱动 ≥550（旧卡 ≥570）；macOS Docker Desktop 无 nvidia device driver，保持默认 CPU 运行。
+- **ollama GPU**：GPU 请求默认关闭（apps/docker-compose.yml 中 `deploy.resources.reservations` 为注释块）。Linux 宿主如需 GPU 加速，取消该注释块后 `docker compose --env-file .env -f apps/docker-compose.yml up -d ollama`，要求 NVIDIA 驱动 ≥550（旧卡 ≥570）；macOS Docker Desktop 无 nvidia device driver，保持默认 CPU 运行。
 - **open-webui 首启**：需从 HuggingFace 下载 embedding 模型，网络受限环境可用环境变量 `HF_ENDPOINT=https://hf-mirror.com` 指向镜像源。
 - **filebeat 挂 docker.sock**：以 `user: root` 运行并只读挂载 `/var/run/docker.sock` 与 `/var/lib/docker/containers`（采集容器日志所需）。Docker Desktop（macOS/Windows）下这些路径由 VM 侧提供，通常可直接工作；若日志采集为空，先 `docker logs filebeat` 看是否为 socket 路径差异。该容器的 docker.sock 是**只读**挂载，不具备改写宿主 Docker 状态的能力。

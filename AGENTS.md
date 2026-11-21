@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Docker Compose infrastructure repository, not an application codebase. The six domain files are the primary modules: `docker-compose-infra.yml`, `docker-compose-observability.yml`, `docker-compose-security.yml`, `docker-compose-platform.yml`, `docker-compose-apps.yml`, and `docker-compose-portal.yml`. Service settings live in `common/env/<service>.env`; deployment logic lives in `startup.sh`, `shutdown.sh`, and `common/`. Portal routing is under `portal/conf/conf.d` (HTTP) and `portal/conf/stream-conf.d` (TCP). Component-specific configuration, MySQL initialization SQL, assets, and design documents are under their matching service directories and `docs/`.
+This is a Docker Compose infrastructure repository, not an application codebase. The six domain packages are the primary modules: `infra/docker-compose.yml`, `observability/docker-compose.yml`, `security/docker-compose.yml`, `platform/docker-compose.yml`, `apps/docker-compose.yml`, and `portal/docker-compose.yml`. Service settings live in `<domain>/env/<service>.env`; deployment logic lives in `startup.sh`, `shutdown.sh`, and `common/`. Portal routing is under `portal/conf/conf.d` (HTTP) and `portal/conf/stream-conf.d` (TCP). Component-specific configuration, MySQL initialization SQL, assets, and design documents are under their matching service directories and `docs/`.
 
 ## Build, Test, and Development Commands
 
@@ -10,7 +10,7 @@ This is a Docker Compose infrastructure repository, not an application codebase.
 cp .env.example .env
 bash startup.sh [data-directory]
 bash shutdown.sh
-for file in docker-compose-*.yml; do docker compose -f "$file" config -q; done
+for file in */docker-compose.yml; do docker compose -f "$file" config -q; done
 bash common/check-consistency.sh
 ```
 
@@ -18,7 +18,7 @@ bash common/check-consistency.sh
 
 ## Coding Style & Naming Conventions
 
-Use two-space indentation for YAML, Nginx, and component configuration. Keep Bash in `snake_case`, quote variables, and prefer reusable arrays or functions in existing scripts. Container names, hostnames, DNS references, and portal subdomains must match, for example `mysql`. Services reference each other by container DNS name, not fixed IP. Keep host-port publishing centralized in `docker-compose-portal.yml`; do not add `ports` to individual services.
+Use two-space indentation for YAML, Nginx, and component configuration. Keep Bash in `snake_case`, quote variables, and prefer reusable arrays or functions in existing scripts. Container names, hostnames, DNS references, and portal subdomains must match, for example `mysql`. Services reference each other by container DNS name, not fixed IP. Keep host-port publishing centralized in `portal/docker-compose.yml`; do not add `ports` to individual services.
 
 ## Testing Guidelines
 
@@ -35,4 +35,4 @@ Follow Conventional Commits with Chinese descriptions, as in `fix(security): ...
 
 ## Security & Configuration Tips
 
-Keep real credentials out of tracked files. Root `.env` is ignored and holds interpolated values such as `DOCKER_VOLUME` and `REDIS_PASSWORD`. Treat `common/env/*` defaults as development-only and preserve their production warnings. Do not reuse this isolated development exposure model, especially etcd, in production.
+Keep real credentials out of tracked files. Root `.env` is ignored and holds interpolated values such as `DOCKER_VOLUME` and `REDIS_PASSWORD`. Treat `<domain>/env/*` defaults as development-only and preserve their production warnings. Do not reuse this isolated development exposure model, especially etcd, in production.
