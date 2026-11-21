@@ -22,6 +22,8 @@ services:
         external_url 'http://gitlab.glseven.local:8929'
         gitlab_rails['gitlab_shell_ssh_port'] = 2224
         gitlab_rails['time_zone'] = 'Asia/Shanghai'
+        # 健康端点（/-/readiness）默认仅允许 localhost；门户经 172.18/16 代理，需放行容器网段。
+        gitlab_rails['monitoring_whitelist'] = ['127.0.0.0/8', '::1', '172.18.0.0/16']
         puma['worker_processes'] = 2
         sidekiq['concurrency'] = 5
         prometheus_monitoring['enable'] = false
