@@ -18,7 +18,7 @@ services:
       - ../common/env/common.env
       - env/ollama.env
     volumes:
-      - ${DOCKER_VOLUME:-/docker/glseven}/ollama:/root/.ollama
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/ollama:/root/.ollama
     networks:
       glseven:
         ipv4_address: 172.18.5.1
@@ -52,7 +52,7 @@ services:
       - ../common/env/common.env
       - env/open-webui.env
     volumes:
-      - ${DOCKER_VOLUME:-/docker/glseven}/open-webui/data:/app/backend/data
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/open-webui/data:/app/backend/data
     depends_on:
       ollama:
         condition: service_healthy
@@ -103,8 +103,8 @@ services:
       - env/iptv.env
     volumes:
       # /migu/data 是镜像内置 VOLUME；不显式覆盖时每次重建容器都会生成匿名 hash 卷。
-      - ${DOCKER_VOLUME:-/docker/glseven}/iptv/data:/iptv/data
-      - ${DOCKER_VOLUME:-/docker/glseven}/iptv/migu:/migu/data
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/iptv/data:/iptv/data
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/iptv/migu:/migu/data
     networks:
       glseven:
         ipv4_address: 172.18.5.4

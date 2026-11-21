@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout full history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -34,7 +34,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          output="$(bash .github/scripts/next-version.sh)"
+          output="$(bash ci/scripts/next-version.sh)"
           printf '%s\n' "$output"
           printf '%s\n' "$output" >> "$GITHUB_OUTPUT"
 
@@ -100,7 +100,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash .github/scripts/release-notes.sh \
+          bash ci/scripts/release-notes.sh \
             --from "${{ steps.version.outputs.previous_tag }}" \
             --to "${{ steps.version.outputs.version }}" \
             --repository "${{ github.repository }}" \

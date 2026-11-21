@@ -7,27 +7,31 @@
 前置：Docker Compose v2+（compose 文件使用顶层 `name:` 字段）。GPU 场景默认关闭，见下方「已知平台限制」的 ollama GPU 条目。
 
 ```shell
-# 1. 准备环境变量（.env 提供 DOCKER_VOLUME / REDIS_PASSWORD 等插值，无 .env 时使用内置默认值）
-cp .env.example .env
+# 1. 选择配置档案（local = 本机；sit = 家里测试服务器）
+cp .env.local.example .env.local
+# sit：cp .env.sit.example .env.sit，并按机器修改 DOCKER_VOLUME / KAFKA_EXTERNAL_HOST
 
 # 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 24 个主机名（服务二级域名 = 容器名，门户为 portal，零别名）
-echo '127.0.0.1 portal.glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local iptv.glseven.local' | sudo tee -a /etc/hosts
+echo '127.0.0.1 portal.glseven.local gitlab.glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local iptv.glseven.local' | sudo tee -a /etc/hosts
 
-# 3. 启动：BASE 批次 → 等待 MySQL 健康 → DEFERRED 批次 → PORTAL
-bash startup.sh
+# 3. 启动：--profile 选择档案；首次必须显式指定，之后可省略（沿用 .glseven-profile）
+bash startup.sh --profile local
+# sit：bash startup.sh --profile sit
 
 # 4. 全部入口聚合在导航页（nginx 为唯一持有宿主端口的容器）
 open http://portal.glseven.local:8000
 
-# 停止：按启动逆序 down 并移除 glseven 网络
+# 停止：沿用上次档案；也可显式 bash shutdown.sh --profile sit
 bash shutdown.sh
 ```
 
+两套档案都已被 gitignore，只提交模板。切换档案只需改 `--profile`；启动横幅会打印实际档案与数据目录。直接运行 `docker compose` 时必须带 `--env-file .env.local`（或 `.env.sit`），否则会因缺少 `DOCKER_VOLUME` 明确报错。本机专属的 portal vhost 放 `portal/conf/conf.d/*.local.conf`（已 gitignore，不参与一致性校验），athena 即此类。
+
 存量环境升级时，需在 `/etc/hosts` 追加 `127.0.0.1 portal.glseven.local`。根域条目可以保留，`glseven.local:8000` 会自动 301 到新入口。
 
-数据目录由 startup.sh 的第一个参数指定（默认 `/docker/glseven`）：`bash startup.sh /data/glseven`。Linux 上需 root/sudo 执行（脚本将 nexus3/prometheus/grafana/elk 数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
+数据目录优先级为：显式数据目录参数 > 已导出的 `DOCKER_VOLUME` > 当前档案的 `DOCKER_VOLUME` > 平台默认值。平台默认值在 Linux 为 `/docker/glseven`，在 macOS 为 `$HOME/docker/glseven`（macOS 根卷只读，不能使用 `/docker`）。也可显式指定：`bash startup.sh --profile local /data/glseven`。Linux 上需 root/sudo 执行（脚本将 nexus3/prometheus/grafana/elk 数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
 
-修改 `REDIS_PASSWORD` 后需同时重建 redis 与 moontv：重新执行 `bash startup.sh` 即可。
+修改当前档案的 `REDIS_PASSWORD` 后需同时重建 redis 与 moontv：重新执行 `bash startup.sh`（沿用上次档案）即可。
 
 ## 六域结构与启动时序
 
@@ -54,7 +58,7 @@ bash shutdown.sh
 
 ## 服务访问入口
 
-**nginx（portal）是唯一持有宿主端口的容器**（28 个端口：8000 门户 + 11 个原生 http 监听 + 16 条 stream），其余 24 个服务零宿主端口；门户二级域名固定为 `portal.glseven.local`（容器名仍为 `nginx`），其余服务二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户；根域 `glseven.local:8000` 仅作兼容跳转。
+**nginx（portal）是唯一持有宿主端口的容器**（30 个端口：8000 门户 + 12 个原生 http 监听 + 17 条 stream），其余 26 个服务零宿主端口；门户二级域名固定为 `portal.glseven.local`（容器名仍为 `nginx`），其余服务二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户；根域 `glseven.local:8000` 仅作兼容跳转。
 
 | 服务 | 入口 | 说明 |
 |---|---|---|
@@ -67,6 +71,7 @@ bash shutdown.sh
 | Nacos | http://nacos.glseven.local:8080 | 控制台（API/gRPC 走下方协议端口） |
 | XXL-JOB | http://xxl-job-admin.glseven.local:8080/xxl-job-admin/ | 控制台（context-path 保留前缀） |
 | Nexus | http://nexus3.glseven.local:8081 | Web UI（Docker Registry 走 localhost:5000） |
+| GitLab | http://gitlab.glseven.local:8929 | 代码仓库与 CI/CD（仅 sit 档案启动） |
 | Portainer | http://portainer.glseven.local:9000 | 容器管理 |
 | APISIX | http://apisix.glseven.local:9180/ui | Dashboard / Admin API（X-API-KEY 见 platform/apisix/conf/config.yaml）；数据面 :9080 |
 | Prometheus | http://prometheus.glseven.local:9090 | 指标（7 个抓取 job） |
@@ -83,10 +88,15 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 
 仅容器网络内（未代理）：keycloak 管理端口 9000、apisix prometheus 指标 9091、etcd peer 2380、filebeat 指标 5066（filebeat 是日志生产者，无用户界面，三类同步点检查中整体豁免）。kafka PLAINTEXT 9092 虽经 stream 透传宿主，但 advertised 裸名 `kafka:9092` 宿主不可解析，协议层对宿主不可用，Kafka 客户端一律走 29092（见下方「Kafka 双 listener」）。
 
+## sit CI/CD 平台（devops 域）
+
+`devops/docker-compose.yml` 承载 GitLab CE 与 GitLab Runner，仅在 `--profile sit` 时启动（`common/compose-list.sh` 的 `profile_includes_devops` 门控），本机 `local` 不启动；本机访问 `gitlab.glseven.local:8929` 返回 502 属预期。流水线定义在 `.gitlab-ci.yml`：`develop` 推送自动部署 sit（改动 `devops/docker-compose.yml` 时跳过，需宿主手工部署），`main` 推送创建 tag 与 Release，回滚用手动 `deploy:sit:rollback` 作业。首次引导、备份与排障见 `docs/runbooks/sit-cicd-bootstrap.md`。
+
 ## 配置约定
 
 - **env 分层**：每个服务一个 `<域>/env/<service>.env`，compose 通过 `env_file` 引用；含默认凭据的文件顶部有 WARNING 注释，生产部署前必须修改。
 - **服务互访走服务名**（Docker DNS），不硬编码 IP；固定 IP 仅用于宿主侧排查与防火墙放行。
+- **配置档案**：`.env.local` / `.env.sit` 承载机器相关值（`DOCKER_VOLUME`、`KAFKA_EXTERNAL_HOST`、`REDIS_PASSWORD`），由 `startup.sh --profile` 选择；`*.local.conf` 为本机专属 vhost，二者均 gitignore。
 - **监控接入**：`observability/prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。
 - **日志接入**：`filebeat`（observability 域，172.18.2.4）经 Docker 容器日志接口采集，直发 `elk:5044` 的 logstash；`observability/elk/logstash/config/02-beats-input.conf` 覆盖镜像内置输入为**明文**（内置版要求 TLS）。Kibana 索引前缀为 `filebeat-`（非 `logstash-*`）。
 - **新增服务的同步点**：加一个服务要改 5 处——`<域>/docker-compose.yml`、`portal/docker-compose.yml`（ports）、`portal/conf/{conf.d,stream-conf.d}/<服务名>.conf`、`portal/html/index.html` 卡片、README 的 /etc/hosts 清单与访问矩阵。`common/check-consistency.sh`（preflight 第 8 步）会机械校验这些同步点，漏改会告警但不阻断启动。
@@ -122,10 +132,17 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 ### Kafka 双 listener（4.3.1）
 
 - 容器网络内：`PLAINTEXT://kafka:9092`（advertised 裸名），微服务客户端 bootstrap 地址写 `kafka:9092`。
-- 宿主/局域网：`EXTERNAL://:29092`，经 nginx stream 透传；advertised 地址在 `infra/env/kafka.env`（默认 `127.0.0.1:29092`，本机 Docker Desktop 客户端直接用 `localhost:29092`）。
-- NAS 局域网其他机器接入：把 `infra/env/kafka.env` 中 EXTERNAL advertised 的 `127.0.0.1` 改成 NAS IP，然后 `docker compose --env-file .env -f infra/docker-compose.yml up -d kafka` 重建。
+- 宿主/局域网：`EXTERNAL://:29092`，经 nginx stream 透传；advertised 地址由当前档案的 `KAFKA_EXTERNAL_HOST` 渲染（local 为 `127.0.0.1`，sit 为宿主局域网 IP）。
+- sit 接入：在 `.env.sit` 设置 `KAFKA_EXTERNAL_HOST` 后重建 kafka：`bash startup.sh --profile sit`，或 `docker compose --env-file .env.sit -f infra/docker-compose.yml up -d kafka`。
 - 9092 的 nginx stream 透传为存量兼容保留：旧 hosts 接入路径仍可用（PLAINTEXT advertised 仍为裸名），容器网络内客户端直连 `kafka:9092`（Docker DNS，不经 nginx）——但新接入一律走 29092，hosts 路径勿再新增依赖。
 - 旧「hosts 条目 `127.0.0.1 kafka`」workaround 已废弃，勿再使用。
+
+### Nacos 客户端 API 鉴权
+
+- 3.2.4 默认关闭客户端 SDK / gRPC / OpenAPI 鉴权；本编排通过 `NACOS_AUTH_ENABLE=true` 显式开启。
+- 控制台（8080）与 admin 鉴权一直默认开启；`NACOS_AUTH_TOKEN` / `NACOS_AUTH_IDENTITY_*` 是镜像 entrypoint 的必填项，不能删除。
+- 首次访问控制台时按提示初始化管理员用户 `nacos` 的密码；之后客户端需带凭据连接。
+- 回滚：只把 `NACOS_AUTH_ENABLE` 设为 `false` 并重建 nacos；不要删除 token/identity。
 
 ## 存量环境迁移（10 域 → 6 域，2026-09-08 重设计）
 
@@ -158,7 +175,7 @@ IP 变化会使容器全量重建；数据卷按 `DOCKER_VOLUME` 子目录绑定
 # 方案 A：保留数据——先在旧容器（未加 --auth 时）手工建 root 用户，再升级
 docker exec -it mongo mongosh admin --eval '
   db.createUser({user:"root",pwd:"root",roles:[{role:"root",db:"admin"}]})'
-# 确认建好后，再 docker compose --env-file .env -f infra/docker-compose.yml up -d mongo
+# 确认建好后，再 docker compose --env-file .env.local -f infra/docker-compose.yml up -d mongo（sit 用 .env.sit）
 
 # 方案 B：数据可弃——直接重建（会清空 mongo 数据）
 bash shutdown.sh && sudo rm -rf "$DOCKER_VOLUME/mongo/data" && bash startup.sh
@@ -208,10 +225,11 @@ flush privileges;
 
 ## 已知平台限制（宿主环境，非编排缺陷）
 
-- **elk**（sebp/elk，amd64-only 镜像）：Apple Silicon macOS 的 Rosetta 模拟层不翻译 seccomp 系统调用，Elasticsearch 9 启动即失败（错误特征 `seccomp unavailable: CONFIG_SECCOMP not compiled into kernel`）；Linux amd64 主机正常。内存受限环境可通过 `ES_JAVA_OPTS` / `LS_JAVA_OPTS` 降低 JVM 堆。
+- **elk**（sebp/elk，amd64-only 镜像）：Apple Silicon macOS 的 Rosetta 模拟层不翻译 seccomp 系统调用，Elasticsearch 9 启动即失败（错误特征 `seccomp unavailable: CONFIG_SECCOMP not compiled into kernel`）；Linux amd64 主机正常。`startup.sh` 在 Apple Silicon 上会自动跳过 `elk/filebeat`，继续启动 Prometheus、Grafana 和其余域；ELK 日志检索入口不可用。内存受限环境可通过 `ES_JAVA_OPTS` / `LS_JAVA_OPTS` 降低 JVM 堆。
 - **Portainer 初始化**：创建 admin 前需从容器日志取 Setup token（`docker logs portainer 2>&1 | grep setup_token`，每次重启会刷新）；且 5 分钟未完成初始化会自动锁定（页面不可操作），需 `docker restart portainer` 后用新 token 重来。初始化请求经 nginx 时需保留原始 Host 头（已在 snippets/proxy.conf 用 `$http_host` 配置）。
 - **phpLDAPadmin 登录**：登录者必须是目录内真实条目，而 osixia/openldap 只把 `cn=admin` 设为 olcRootDN（DB 级 bind 凭据，无目录条目），因此仓库附 `security/openldap/bootstrap/admin-entry.ldif`（含 `uid=admin`），首次初始化卷后需导入一次（命令见该文件头注释），导入后 USER ID 填 `admin` 登录（bind 实际走 olcRootDN，具全权）。登录后若见一次 500 页，刷新即可（登录表单闪存残留，一次性）。另：PLA 检索用户需绑定搜索账号（默认 ACL 拒匿名读），见 `security/env/phpldapadmin.env`。
 - **Registry :5000**：端口绑定主体是 nginx（portal），但 macOS 上该端口仍可能被 AirPlay Receiver（ControlCenter 进程）占用导致容器启动报 `port is already allocated`，需在系统设置关闭 AirPlay Receiver（全栈唯一需宿主侧配合的端口）。
-- **ollama GPU**：GPU 请求默认关闭（apps/docker-compose.yml 中 `deploy.resources.reservations` 为注释块）。Linux 宿主如需 GPU 加速，取消该注释块后 `docker compose --env-file .env -f apps/docker-compose.yml up -d ollama`，要求 NVIDIA 驱动 ≥550（旧卡 ≥570）；macOS Docker Desktop 无 nvidia device driver，保持默认 CPU 运行。
+- **GitLab/Runner（devops 域）**：仅 `sit` 档案启动（`profile_includes_devops` 门控）；本机 `local` 访问 `gitlab.glseven.local:8929` 返回 502 属预期。GitLab 常驻约 3–3.5 GiB，legion 可用内存约 6 GiB 时需限制构建并发（runner `concurrent = 1`）。
+- **ollama GPU**：GPU 请求默认关闭（apps/docker-compose.yml 中 `deploy.resources.reservations` 为注释块）。Linux 宿主如需 GPU 加速，取消该注释块后 `docker compose --env-file .env.local -f apps/docker-compose.yml up -d ollama`，要求 NVIDIA 驱动 ≥550（旧卡 ≥570）；macOS Docker Desktop 无 nvidia device driver，保持默认 CPU 运行。
 - **open-webui 首启**：需从 HuggingFace 下载 embedding 模型，网络受限环境可用环境变量 `HF_ENDPOINT=https://hf-mirror.com` 指向镜像源。
 - **filebeat 挂 docker.sock**：以 `user: root` 运行并只读挂载 `/var/run/docker.sock` 与 `/var/lib/docker/containers`（采集容器日志所需）。Docker Desktop（macOS/Windows）下这些路径由 VM 侧提供，通常可直接工作；若日志采集为空，先 `docker logs filebeat` 看是否为 socket 路径差异。该容器的 docker.sock 是**只读**挂载，不具备改写宿主 Docker 状态的能力。

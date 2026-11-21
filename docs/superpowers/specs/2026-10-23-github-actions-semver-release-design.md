@@ -1,12 +1,12 @@
 # 设计文档：GitHub Actions CI 与自动语义版本发布
 
 - 日期：2026-10-23
-- 状态：已经用户逐节确认
+- 状态：已实施并发布（设计已经用户逐节确认）
 - 范围：glseven-docker 的静态 CI、Conventional Commits 自动升版、annotated tag 与 GitHub Release
 
 ## 1. 背景与目标
 
-仓库是纯 Docker Compose 配置编排，没有应用构建与单元测试。现有验证手段是六个 Compose 文件的静态渲染和跨域一致性脚本；远端位于 GitHub。当前只有手工创建的 `v1.0.0`，`develop` 相对该标签包含 1 个 `feat` 和多个 `fix` 提交。
+仓库是纯 Docker Compose 配置编排，没有应用构建与单元测试。现有验证手段是六个 Compose 文件的静态渲染和跨域一致性脚本；远端位于 GitHub。设计基线只有手工创建的 `v1.0.0` annotated tag，`develop` 相对该标签包含 1 个 `feat` 和多个 `fix` 提交。
 
 目标：
 
@@ -16,7 +16,7 @@
 4. 重复运行不重复升版；失败后重跑可以补完发布。
 5. 不引入 npm、第三方发布 Action、PAT 或额外 secret。
 
-本次发布范围为用户确认的当前全部 `develop` 变更；首个自动版本预期为 `v1.1.0`。
+本次发布范围为用户确认的当时全部 `develop` 变更；首个自动版本实际为 `v1.1.0`。
 
 ## 2. 决策记录
 
@@ -25,11 +25,22 @@
 | CI 平台 | GitHub Actions |
 | 发布触发 | CI 通过后，push 到 `main` 自动发布 |
 | 版本规则 | `feat` 升 minor；`fix` / `perf` / `refactor` 升 patch；breaking change 升 major |
-| 无版本提交 | 仅 `docs` / `test` / `ci` / `chore` / `style` 时跳过发布 |
+| 无版本提交 | 仅 `docs` / `test` / `ci` / `chore` / `style` / `build` 或非 Conventional Commits 时跳过发布 |
 | CI 深度 | 静态校验；不启动整套服务 |
 | Release 内容 | 自动生成中文分组变更记录 |
 | 实现路径 | 原生 GitHub Actions + 仓库内 Bash 发布脚本 |
 | 凭证 | 只使用 `GITHUB_TOKEN` |
+
+## 已实施与验收
+
+2026-10-23 的远端与本地复核结果如下：
+
+- PR #3 将 `codex/ci-semver-release` 合入 `develop`，head `061648290630e613b1c350c1006e71fcc5582b2e` 的 `Validate repository` check 成功；PR #4 将 `develop` 合入 `main`，head `7b2d299867ef5a034f5918233b9df915b8605bcb` 的 `Validate repository` check 成功。
+- `v1.1.0` 是 annotated tag，tag object 为 `b5c1a26e5ecf0900f65715b77bf1f298cd7c5070`，peel 后指向 `a132f97ed190e3ab2e41ea1e38938c63d7630e6a`。
+- Release workflow run `39899968642` 的 attempt 1 成功，重跑 attempt 2 也成功。
+- 远端仅有 `v1.1.0` 一个 patch tag，Release 列表仅有 `v1.0.0` 与 `v1.1.0`，没有重复 `v1.1.0` Release。
+- 首次自动发布前已用 `gh release create v1.0.0 --verify-tag --title v1.0.0 --notes-from-tag` 补建 `v1.0.0` Release。
+- 后续修复提交 `1ea301c` 排除 merge subject 并启用严格一致性门禁与 checkout v5，`1e8fadf` 修正 strict 失败摘要；这些修复尚在 `codex/ci-semver-release-fixes` 分支，等待后续 PR，未包含在已发布的 `v1.1.0` 中。
 
 ## 3. 总体架构
 
@@ -86,17 +97,17 @@ PR -> develop/main            push -> develop
 
 CI 使用 `ubuntu-latest`，步骤固定为：
 
-1. checkout。
+1. 使用 `actions/checkout@v5` 和 `fetch-depth: 0` checkout 完整历史。
 2. 对所有 Git 跟踪的 `*.sh` 执行 `bash -n`。
 3. 从 `.env.example` 生成仅存在于 runner 工作区的 `.env`。
 4. 对每个 `docker-compose-*.yml` 执行 `docker compose -f <file> config -q`。
-5. 执行 `bash common/check-consistency.sh`。
+5. 执行 `bash common/check-consistency.sh --strict`；不一致项阻断 CI。
 6. 执行 `bash .github/scripts/test-release-scripts.sh`。
-7. 按本次变更范围执行 `git diff --check`：PR 比较 merge-base 到 `HEAD`，push 比较 event before 到 `HEAD`。
+7. 按本次变更范围执行 `git diff --check`：PR 比较 merge-base 到 `HEAD`；push 的 `before` 为零值或不可达时，以及手动触发等无可靠基线场景，都以空树到 `HEAD` 检查；其余 push 比较 event before 到 `HEAD`。
 
 不引入 `shellcheck`：当前开发机未安装，且引入后可能要求修改与本次发布无关的存量脚本。GitHub 自身会解析 workflow YAML；Compose 文件由 `docker compose config -q` 校验。
 
-`develop` 只做 CI。PR 的 CI 在分支与目标上下文均可单独重跑。
+`develop` 只做 CI。PR 的 CI 在分支与目标上下文均可单独重跑。`startup.sh` / preflight 中 warning-only 的一致性检查继续作为本地启动提示，不替代 CI 的 strict 门禁。
 
 ## 5. 版本计算设计
 
@@ -106,16 +117,16 @@ CI 使用 `ubuntu-latest`，步骤固定为：
 
 ### 5.2 bump 规则
 
-检查基线 tag 到 `HEAD` 的全部提交：
+检查基线 tag 到 `HEAD` 的提交，使用 `git log --no-merges` 排除 merge commit 本身：
 
 1. 提交正文含 `BREAKING CHANGE:` 或标题 type 带 `!`：major。
 2. 存在 `feat`：minor。
 3. 存在 `fix`、`perf` 或 `refactor`：patch。
 4. 若上述三类可发布变更均不存在，则跳过发布；只有 `docs`、`test`、`ci`、`chore`、`style`、`build` 或非 Conventional Commits 的区间不会产生版本。
 
-多重条件取最高级别，不叠加 bump。Merge commit 本身不做分类；其可达的普通提交仍参与计算。
+多重条件取最高级别，不叠加 bump。Merge commit subject 即使写成 `feat(...)` 或带 `!` 也不参与分类；经 merge 仍可从 `HEAD` 到达的普通提交继续参与计算。回归测试必须构造真实双 parent merge，分别覆盖“merge subject 不升级”和“merge 内普通 `feat` 仍升级”。
 
-当前 `v1.0.0..develop` 含 `feat(portal)`，当前 `develop` 全量合并到 `main` 后应产生 `v1.1.0`。
+`v1.0.0..develop` 含 `feat(portal)`；`develop` 全量合并到 `main` 后已按此规则产生 `v1.1.0`。
 
 ### 5.3 幂等状态
 
@@ -147,17 +158,92 @@ Release 标题为 `vX.Y.Z`，正文包含（发布日期按 `Asia/Shanghai` 计�
 发布顺序：
 
 1. 调用静态 CI。
-2. 计算基线、目标版本和提交分组。
-3. 在本地创建 annotated tag。
-4. 推送 tag。
-5. 使用 `gh release create` 创建 GitHub Release。
+2. 计算基线、目标版本和发布状态。
+3. 检查 prior-Release invariant：在推进版本前，最新可达 prior tag 必须有 GitHub Release，除非该 tag 已指向 `HEAD`；tag-on-HEAD 是同一发布 run 失败后补建 Release 的恢复路径。
+4. Release 状态存在时正常结束；缺失时生成 notes、创建并推送 annotated tag，再创建 GitHub Release。
+
+Release 存在性必须使用 `gh api --include` 查询 `repos/<owner>/<repo>/releases/tags/<tag>`，先完整捕获响应，再读取第一个 `HTTP/...` 状态并结合命令退出码分类：
+
+- 命令成功且首个 HTTP 状态为 `2xx`：Release 存在。
+- 命令失败且首个 HTTP 状态严格等于 `404`（HTTP 404）：Release 缺失。
+- 其余组合，包括无 HTTP 状态、`3xx`、非 `404` 的 `4xx`、`5xx`、混合状态或响应解析失败：fail closed，不得创建或继续发布。
+
+解析器必须消费完整响应；不得在首个 HTTP 行后提前退出，否则大响应可能触发 `SIGPIPE`/`pipefail` 并把状态误判为缺失。只有显式 `404` 可以触发 `gh release create`，不得以任意非零命令状态推断缺失。
+
+一次性前置条件：`v1.0.0` 在设计基线已有 annotated tag 但没有 Release，必须在首次 `develop` -> `main` 合并前补建：
+
+```bash
+gh release create v1.0.0 --verify-tag --title v1.0.0 --notes-from-tag
+```
+
+`--verify-tag` 要求 tag 已存在，`--notes-from-tag` 使用 annotated tag message 作为 Release notes。该步骤已完成。
+
+后续遇到任意 prior tag 缺失 Release 时，先按 guard 报告设置 `MISSING_TAG`，再执行以下只读分类与受控回填：
+
+```bash
+set -euo pipefail
+
+backfill_missing_release() {
+  local missing_tag="${MISSING_TAG:?set MISSING_TAG to the tag reported by the prior-Release guard}"
+  local repository="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
+  local command_status=0
+  local response=""
+  local http_status=""
+  local tag_type=""
+
+  [[ -n "$repository" ]] || {
+    printf 'Cannot determine the GitHub repository.\n' >&2
+    return 1
+  }
+
+  response="$(
+    gh api --include \
+      "repos/$repository/releases/tags/$missing_tag" 2>&1
+  )" || command_status=$?
+  http_status="$(
+    printf '%s\n' "$response" |
+      awk '$1 ~ /^HTTP\// && !seen { print $2; seen = 1 }'
+  )"
+
+  if [[ "$command_status" -eq 0 && "$http_status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "Release $missing_tag already exists"
+    return 0
+  fi
+  if [[ "$command_status" -ne 0 && "$http_status" == "404" ]]; then
+    git fetch --tags origin
+    if ! tag_type="$(git cat-file -t "$missing_tag" 2>/dev/null)"; then
+      printf '%s is missing; refusing backfill.\n' "$missing_tag" >&2
+      return 1
+    fi
+    if [[ "$tag_type" != "tag" ]]; then
+      printf '%s is not an annotated tag; refusing backfill.\n' "$missing_tag" >&2
+      return 1
+    fi
+    gh release create "$missing_tag" \
+      --verify-tag \
+      --title "$missing_tag" \
+      --notes-from-tag || return $?
+    return 0
+  fi
+
+  printf '%s\n' "$response" >&2
+  printf 'Cannot determine Release state for %s; refusing backfill.\n' "$missing_tag" >&2
+  return 1
+}
+
+backfill_missing_release
+```
+
+该流程在创建前同时要求“命令失败 + 首个 HTTP 状态为 `404`”和 `git cat-file -t "$MISSING_TAG"` 输出 `tag`。`2xx` 表示已存在；非 `404` 错误、混合状态或响应解析失败均失败关闭，不得回填。
 
 失败语义：
 
 - CI 失败：发布 job 不运行，不产生 tag 或 Release。
 - tag 推送失败：不创建 Release。
 - tag 已推送但 Release 创建失败：workflow 重跑时识别 tag 已指向 HEAD，只补建 Release。
-- Release 已存在：发布 job 正常结束，不重复创建。
+- prior tag 的 Release 缺失：拒绝推进新版本；操作者按一次性前置条件显式补建后重跑，guard 自身不自动创建 prior Release。
+- Release API 结果不确定或返回非 `404` 错误：发布失败关闭，不从“命令失败”推断 Release 缺失。
+- 目标 Release 已存在：发布 job 正常结束，不重复创建。
 - 无可发布提交：输出跳过原因，job 成功结束。
 
 ## 8. 脚本接口
@@ -199,6 +285,8 @@ release-notes.sh --from <previous-tag> --to <target-tag> --repository <owner/rep
 5. 最新 tag 已指向 HEAD：`tag_on_head=true`，不再次 bump。
 6. Release Notes 分组、commit 链接及 compare URL 正确。
 7. 无历史 tag 时从 `v0.0.0` 开始。
+8. 真实双 parent merge 的 conventional merge subject 不进入 bump 分类。
+9. merge 内可达的普通 `feat` 提交仍使版本升 minor。
 
 ## 9. 验收标准
 
@@ -218,3 +306,4 @@ release-notes.sh --from <previous-tag> --to <target-tag> --repository <owner/rep
 - 不引入 semantic-release、npm、第三方 tag/release Action。
 - 不使用 PAT、GitHub App 或额外 secrets。
 - 不自动合并 `develop` 到 `main`；分支合并仍由用户发起。
+- 不把 `1ea301c`、`1e8fadf` 的后续修复描述为已合并或已发布；它们在当前修复分支上等待独立 PR。

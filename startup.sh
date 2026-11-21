@@ -2,10 +2,51 @@
 
 set -e
 
-# DOCKER_VOLUME 外部传入，默认值为 /docker/glseven
-export DOCKER_VOLUME=${1:-/docker/glseven}
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common/docker-volume.sh
+source "$SCRIPT_DIR/common/docker-volume.sh"
+
+# 档案选择：--profile > .glseven-profile > 报错。
+PROFILE=""
+PROFILE_SET=0
+POSITIONAL_DIR=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profile|-p)
+      [ $# -ge 2 ] || { echo "Error: --profile requires a value"; exit 2; }
+      PROFILE="$2"; PROFILE_SET=1; shift 2 ;;
+    --profile=*)
+      PROFILE="${1#*=}"; PROFILE_SET=1; shift ;;
+    --*)
+      echo "Error: unknown option: $1"; exit 2 ;;
+    *)
+      POSITIONAL_DIR="$1"; shift ;;
+  esac
+done
+
+# shellcheck source=common/profile.sh
+source "$SCRIPT_DIR/common/profile.sh"
+require_profile_value || exit 2
+PROFILE="$(select_profile "$SCRIPT_DIR" "$PROFILE")" || exit 1
+PROFILE_FILE="$(profile_file "$SCRIPT_DIR" "$PROFILE")"
+if [ ! -f "$PROFILE_FILE" ]; then
+  echo "Error: profile file not found: $PROFILE_FILE"
+  if [ -f "${PROFILE_FILE}.example" ]; then
+    echo "Hint: cp ${PROFILE_FILE}.example ${PROFILE_FILE}"
+  else
+    echo "Hint: create ${PROFILE_FILE} (see .env.local.example for the keys)"
+  fi
+  exit 1
+fi
+printf '%s\n' "$PROFILE" > "$SCRIPT_DIR/$ACTIVE_PROFILE_FILE"
+export PROFILE PROFILE_FILE
+
+# 优先级：显式数据目录 > 已导出的 DOCKER_VOLUME > 档案 > 平台默认值。
+# macOS 根卷只读，因此无配置时落在 $HOME/docker/glseven，而不是 /docker。
+export DOCKER_VOLUME="$(
+  resolve_docker_volume "$SCRIPT_DIR" "$POSITIONAL_DIR" "$(uname -s)" "$HOME" "$PROFILE_FILE"
+)"
+
 # shellcheck source=common/compose-list.sh
 source "$SCRIPT_DIR/common/compose-list.sh"
 # shellcheck source=common/preflight.sh
@@ -14,8 +55,28 @@ cd "$SCRIPT_DIR"
 
 echo "==========================================="
 echo "启动 GLSeven Docker 容器..."
+echo "Profile: $PROFILE"
 echo "DOCKER_VOLUME: $DOCKER_VOLUME"
 echo "==========================================="
+
+compose() {
+  docker compose --env-file "$PROFILE_FILE" "$@"
+}
+
+start_compose_group() {
+  local group="$1"
+  local -a services=()
+
+  if [[ "$group" == "observability" ]] &&
+    is_apple_silicon "$(uname -s)" "$(uname -m)"; then
+    echo "WARN: Apple Silicon cannot run the amd64 ELK image; skipping elk/filebeat."
+    echo "WARN: observability continues with prometheus/grafana only."
+    compose -f "${group}/docker-compose.yml" stop elk filebeat >/dev/null 2>&1 || true
+    services=("${COMPOSE_SERVICES_OBSERVABILITY_APPLE_SILICON[@]}")
+  fi
+
+  compose -f "${group}/docker-compose.yml" up -d "${services[@]}"
+}
 
 # 部署前置自愈与预检（幂等）：目录权限 / .env / vm.max_map_count / 孤儿网桥 / registry 镜像（ghcr+quay）/ 端口占用 / 日志轮转
 run_preflight
@@ -31,7 +92,7 @@ chown_dir() {
 # 创建必要的目录并设置权限（目录创建失败仍致命）
 # 表驱动：每条为 "<相对 DOCKER_VOLUME 的路径> <宿主属主 uid>"。新增非 root 容器时在此加一行即可，
 # 无需改下面的创建/授权/恢复 mode 三段逻辑（原先散在四处硬编码，易漏，2026-09-21 审查后收敛）。
-# 属主 uid 依据：nexus3=200、prometheus=65534(nobody)、grafana=472、elk/kafka=1000、phpldapadmin=82(www-data)。
+# 属主 uid 依据：nexus3=200、prometheus=65534(nobody)、grafana=472、elk/kafka=1000、phpldapadmin=82(www-data)、gitlab=998。
 # kafka 是 2026-09-21 修复「数据不落盘」时新增：设了 KAFKA_LOG_DIRS 后 compose 会预建
 # /var/lib/kafka/data 挂载点，属主不是 1000(appuser) 则 broker 起不来。
 DIR_SPECS=(
@@ -46,6 +107,11 @@ DIR_SPECS=(
   "phpldapadmin 82"
   "phpldapadmin/sessions 82"
   "phpldapadmin/logs 82"
+  "gitlab/config 0"
+  "gitlab/logs 998"
+  "gitlab/data 998"
+  "gitlab-runner/config 0"
+  "gitlab-runner/cache 0"
 )
 
 echo "Creating directories..."
@@ -76,7 +142,7 @@ fi
 # 启动基础设施服务
 echo "Starting base services..."
 for group in "${COMPOSE_FILES_BASE[@]}"; do
-  docker compose --env-file "$SCRIPT_DIR/.env" -f "${group}/docker-compose.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
+  start_compose_group "$group" || { echo "Error: ${group} services failed to start"; exit 1; }
   echo "✓ ${group} services started"
 done
 
@@ -98,14 +164,25 @@ echo "✓ MySQL is healthy"
 # 启动依赖 MySQL 的服务
 echo "Starting deferred services..."
 for group in "${COMPOSE_FILES_DEFERRED[@]}"; do
-  docker compose --env-file "$SCRIPT_DIR/.env" -f "${group}/docker-compose.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
+  start_compose_group "$group" || { echo "Error: ${group} services failed to start"; exit 1; }
   echo "✓ ${group} services started"
 done
+
+# 启动 sit 专用的 CI/CD 平台（GitLab + Runner）
+if profile_includes_devops; then
+  echo "Starting devops services..."
+  for group in "${COMPOSE_FILES_DEVOPS[@]}"; do
+    start_compose_group "$group" || { echo "Error: ${group} services failed to start"; exit 1; }
+    echo "✓ ${group} services started"
+  done
+else
+  echo "Skipping devops services (profile: $PROFILE)"
+fi
 
 # 启动导航门户（最后一批）
 echo "Starting portal..."
 for group in "${COMPOSE_FILES_PORTAL[@]}"; do
-  docker compose --env-file "$SCRIPT_DIR/.env" -f "${group}/docker-compose.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
+  start_compose_group "$group" || { echo "Error: ${group} services failed to start"; exit 1; }
   echo "✓ ${group} services started"
 done
 

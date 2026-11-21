@@ -1,0 +1,70 @@
+stages:
+  - validate
+  - deploy
+  - release
+
+variables:
+  # MR 的 diff base 需要完整历史；仓库很小，代价可忽略
+  GIT_DEPTH: "0"
+
+default:
+  # 镜像基于 Alpine：无 bash/curl；Runner 在 before_script 之前就选定了 /bin/sh，
+  # 作业体只调用 bash 脚本，不内联 bashism。
+  image: docker:29.10.0-cli
+  before_script:
+    - apk add --no-cache bash git curl
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+validate:
+  stage: validate
+  script:
+    - bash ci/validate.sh
+
+deploy:sit:
+  stage: deploy
+  needs: ["validate"]
+  environment:
+    name: sit
+  resource_group: sit
+  rules:
+    # devops 本体变更会重启 GitLab/Runner 并中断作业，必须宿主手工部署
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      changes:
+        - devops/docker-compose.yml
+      when: never
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: on_success
+  script:
+    - bash ci/deploy-sit.sh
+
+deploy:sit:rollback:
+  stage: deploy
+  needs: ["validate"]
+  environment:
+    name: sit
+  resource_group: sit
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+  variables:
+    TARGET_SHA: "$ROLLBACK_SHA"
+  script:
+    - |
+      [ -n "${ROLLBACK_SHA:-}" ] || { echo "ROLLBACK_SHA is required" >&2; exit 2; }
+      bash ci/deploy-sit.sh
+
+release:
+  stage: release
+  needs: ["validate"]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  variables:
+    REPO_SERVER_URL: "$CI_SERVER_URL"
+  script:
+    - bash ci/release.sh

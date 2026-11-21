@@ -214,6 +214,37 @@ run_next_version_tests() {
 
   new_repo
   init_v1
+  base_branch="$(git symbolic-ref --short HEAD)"
+  git checkout -q -b docs-ci-topic
+  commit_file "docs: 仅更新说明"
+  commit_file "ci: 仅调整校验"
+  git checkout -q "$base_branch"
+  git merge -q --no-ff -m "feat(merge): 合并普通修正" docs-ci-topic
+  assert_eq "$(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ')" "3" "docs/ci merge has two parents"
+  output="$("$BASH_UNDER_TEST" "$NEXT_VERSION")"
+  assert_version_field "$output" release false
+  assert_version_field "$output" version ""
+  assert_version_field "$output" tag_on_head false
+  assert_version_field "$output" previous_tag v1.0.0
+  assert_version_field "$output" bump none
+
+  new_repo
+  init_v1
+  base_branch="$(git symbolic-ref --short HEAD)"
+  git checkout -q -b feature-topic
+  commit_file "feat(ci): 增加发布能力"
+  git checkout -q "$base_branch"
+  git merge -q --no-ff -m "docs: 合并功能分支" feature-topic
+  assert_eq "$(git rev-list --parents -n 1 HEAD | wc -w | tr -d ' ')" "3" "feature merge has two parents"
+  output="$("$BASH_UNDER_TEST" "$NEXT_VERSION")"
+  assert_version_field "$output" release true
+  assert_version_field "$output" version v1.1.0
+  assert_version_field "$output" tag_on_head false
+  assert_version_field "$output" previous_tag v1.0.0
+  assert_version_field "$output" bump minor
+
+  new_repo
+  init_v1
   git tag -a v1.2.3-rc.1 -m "v1.2.3-rc.1"
   git tag -a v1.2.3+build -m "v1.2.3+build"
   git tag -a v01.2.3 -m "v01.2.3"
@@ -298,7 +329,7 @@ run_next_version_tests() {
 
 run_release_notes_tests() {
   local output breaking_hash feat_hash fix_hash perf_hash refactor_hash docs_hash chore_hash
-  local body_breaking_hash docs_only_hash
+  local body_breaking_hash docs_only_hash gitlab_feat_hash
   local base_branch merge_feature_hash merge_parents
   local untagged_hash tagged_init_hash tagged_feature_hash
   local initial_init_hash initial_feature_hash expected_date
@@ -484,6 +515,28 @@ run_release_notes_tests() {
   assert_contains "$output" "初始版本 v0.1.0" "initial release entry"
   assert_contains "$output" "https://github.com/owner/repo/commits/v0.1.0" "initial release link"
   assert_section_order "$output" "## 功能|## 其他|## 完整变更"
+
+  # GitLab provider：链接路径带 /-/ 前缀
+  new_repo
+  init_v1
+  commit_file "feat(ci): GitLab 发布链接"
+  gitlab_feat_hash="$(git rev-parse HEAD)"
+  git tag -a v1.0.1 -m "v1.0.1"
+  output="$(
+    REPO_SERVER_URL="https://gitlab.example/" \
+      "$BASH_UNDER_TEST" "$RELEASE_NOTES" \
+        --from v1.0.0 \
+        --to v1.0.1 \
+        --repository glseven/glseven-docker \
+        --provider gitlab
+  )"
+  assert_contains "$output" "https://gitlab.example/glseven/glseven-docker/-/commit/${gitlab_feat_hash}" "gitlab provider commit link"
+  assert_contains "$output" "https://gitlab.example/glseven/glseven-docker/-/compare/v1.0.0...v1.0.1" "gitlab provider compare link"
+  assert_not_contains "$output" "gitlab.example//glseven" "gitlab single-slash server URL"
+
+  # 未知 provider 必须报错
+  assert_cli_failure "unknown provider" "unknown provider: svn" \
+    --to v1.0.1 --repository x/y --provider svn
 
   printf 'release-notes tests: OK\n'
 }

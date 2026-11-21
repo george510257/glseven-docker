@@ -2,19 +2,21 @@
 
 ## Project Structure & Module Organization
 
-This is a Docker Compose infrastructure repository, not an application codebase. The six domain packages are the primary modules: `infra/docker-compose.yml`, `observability/docker-compose.yml`, `security/docker-compose.yml`, `platform/docker-compose.yml`, `apps/docker-compose.yml`, and `portal/docker-compose.yml`. Service settings live in `<domain>/env/<service>.env`; deployment logic lives in `startup.sh`, `shutdown.sh`, and `common/`. Portal routing is under `portal/conf/conf.d` (HTTP) and `portal/conf/stream-conf.d` (TCP). Component-specific configuration, MySQL initialization SQL, assets, and design documents are under their matching service directories and `docs/`.
+This is a Docker Compose infrastructure repository, not an application codebase. The seven domain packages are the primary modules: `infra/docker-compose.yml`, `observability/docker-compose.yml`, `security/docker-compose.yml`, `platform/docker-compose.yml`, `apps/docker-compose.yml`, `devops/docker-compose.yml` (GitLab + Runner, only started by the `sit` profile), and `portal/docker-compose.yml`. Service settings live in `<domain>/env/<service>.env`; deployment logic lives in `startup.sh`, `shutdown.sh`, and `common/`. Portal routing is under `portal/conf/conf.d` (HTTP) and `portal/conf/stream-conf.d` (TCP). Component-specific configuration, MySQL initialization SQL, assets, and design documents are under their matching service directories and `docs/`.
 
 ## Build, Test, and Development Commands
 
 ```bash
-cp .env.example .env
-bash startup.sh [data-directory]
+cp .env.local.example .env.local
+bash startup.sh --profile local [data-directory]
 bash shutdown.sh
-for file in */docker-compose.yml; do docker compose -f "$file" config -q; done
+for file in */docker-compose.yml; do docker compose --env-file .env.local -f "$file" config -q; done
 bash common/check-consistency.sh
+bash ci/scripts/test-profile.sh
+bash ci/scripts/test-env-config.sh
 ```
 
-`startup.sh` runs preflight checks, creates volumes and the `glseven` network, then starts domains in batches. `shutdown.sh` stops them in reverse order. The two validation commands check Compose syntax and cross-file portal consistency. There is no application build or unit-test suite.
+`startup.sh` runs preflight checks, creates volumes and the `glseven` network, then starts domains in batches. `shutdown.sh` stops them in reverse order. The `devops` domain is profile-gated: only `--profile sit` starts GitLab and its runner. The two validation commands check Compose syntax and cross-file portal consistency. There is no application build or unit-test suite.
 
 ## Coding Style & Naming Conventions
 
@@ -35,4 +37,4 @@ Follow Conventional Commits with Chinese descriptions, as in `fix(security): ...
 
 ## Security & Configuration Tips
 
-Keep real credentials out of tracked files. Root `.env` is ignored and holds interpolated values such as `DOCKER_VOLUME` and `REDIS_PASSWORD`. Treat `<domain>/env/*` defaults as development-only and preserve their production warnings. Do not reuse this isolated development exposure model, especially etcd, in production.
+Keep real credentials out of tracked files. Profile files (`.env.local` / `.env.sit`) are ignored and hold per-machine values such as `DOCKER_VOLUME`, `KAFKA_EXTERNAL_HOST`, and `REDIS_PASSWORD`; only `*.example` templates are tracked. Treat `<domain>/env/*` defaults as development-only and preserve their production warnings. Do not reuse this isolated development exposure model, especially etcd, in production.

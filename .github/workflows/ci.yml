@@ -21,7 +21,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -34,7 +34,28 @@ jobs:
           done < <(git ls-files -z '*.sh')
 
       - name: Prepare Compose environment
-        run: cp .env.example .env
+        run: cp .env.local.example .env.local
+
+      - name: Run script tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test_script in ci/scripts/test-*.sh; do
+            echo "Running $test_script"
+            bash "$test_script"
+          done
+
+      - name: Assert profiles are ignored
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in .env.local .env.sit .glseven-profile; do
+            git check-ignore -q "$path"
+          done
+          if git check-ignore -q .env.local.example; then
+            echo "::error::.env.local.example must not be ignored"
+            exit 1
+          fi
 
       - name: Validate Compose files
         shell: bash
@@ -45,14 +66,11 @@ jobs:
           [[ ${#files[@]} -gt 0 ]]
           for file in "${files[@]}"; do
             echo "Validating $file"
-            docker compose --env-file .env -f "$file" config -q
+            docker compose --env-file .env.local -f "$file" config -q
           done
 
       - name: Check portal consistency
-        run: bash common/check-consistency.sh
-
-      - name: Test release scripts
-        run: bash .github/scripts/test-release-scripts.sh
+        run: bash common/check-consistency.sh --strict
 
       - name: Check changed lines for whitespace errors
         shell: bash

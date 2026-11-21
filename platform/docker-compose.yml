@@ -17,7 +17,7 @@ services:
       - ../common/env/common.env
       - env/nacos.env
     volumes:
-      - ${DOCKER_VOLUME:-/docker/glseven}/nacos/logs:/home/nacos/logs
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/nacos/logs:/home/nacos/logs
       - ./nacos/config/custom.properties:/home/nacos/init.d/custom.properties
     networks:
       glseven:
@@ -40,7 +40,7 @@ services:
     env_file:
       - ../common/env/common.env
     volumes:
-      - ${DOCKER_VOLUME:-/docker/glseven}/xxl-job-admin/logs:/data/applogs
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/xxl-job-admin/logs:/data/applogs
       - ./xxl-job-admin/application.properties:/application.properties
     networks:
       glseven:
@@ -61,7 +61,7 @@ services:
     env_file:
       - ../common/env/common.env
     volumes:
-      - ${DOCKER_VOLUME:-/docker/glseven}/nexus3/data:/nexus-data
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/nexus3/data:/nexus-data
     networks:
       glseven:
         ipv4_address: 172.18.4.3
@@ -83,7 +83,7 @@ services:
     env_file:
       - ../common/env/common.env
     volumes:
-      - ${DOCKER_VOLUME:-/docker/glseven}/portainer/data:/data
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/portainer/data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       glseven:

@@ -68,7 +68,7 @@ else
 fi
 
 bump="$(
-  git log --format='%B%x1e' "$commit_range" |
+  git log --no-merges --format='%B%x1e' "$commit_range" |
     awk '
       BEGIN { RS = "\036"; major = 0; minor = 0; patch = 0 }
       {
