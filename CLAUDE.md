@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 本仓库是什么
 
-纯配置编排仓库：6 个职能域、25 个容器（nginx 门户 + 24 个后端服务），共用外部网络 `glseven`（172.18.0.0/16），数据绑定宿主目录。没有应用代码，也没有构建步骤。
+纯配置编排仓库：7 个职能域、27 个容器（nginx 门户 + 26 个后端服务；devops 域仅 sit 档案启动），共用外部网络 `glseven`（172.18.0.0/16），数据绑定宿主目录。没有应用代码，也没有构建步骤。
 
-改动几乎只落在 `docker-compose-*.yml`、`common/env/*.env`、`portal/conf/**`、`.github/**` 和各组件自身配置文件上。「测试」由三类组成：Compose 静态渲染、Bash 脚本测试、起环境后的实时探测。CI 跑前两类，因此本地提交前应执行同一组命令。
+改动几乎只落在 `docker-compose-*.yml`、`common/env/*.env`、`portal/conf/**`、`.gitlab-ci.yml`、`ci/**` 和各组件自身配置文件上。「测试」由三类组成：Compose 静态渲染、Bash 脚本测试、起环境后的实时探测。CI 跑前两类，因此本地提交前应执行同一组命令。
 
 ## 常用命令
 
@@ -16,7 +16,7 @@ bash startup.sh --profile local [数据目录]  # 首次必须指定，之后沿
 bash shutdown.sh                           # 沿用上次档案；也可 --profile
 ```
 
-单域操作（六个 compose 文件都声明 `networks.glseven.external: true`，网络必须先存在）：
+单域操作（七个 compose 文件都声明 `networks.glseven.external: true`，网络必须先存在；devops 仅 sit 启动）：
 
 ```bash
 docker network create --driver=bridge --subnet=172.18.0.0/16 glseven
@@ -51,11 +51,11 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 
 ## 架构要点
 
-**分层 Compose，不写跨 project 依赖。** 六个文件（`infra`、`observability`、`security`、`platform`、`apps`、`portal`）一域一个，各自是独立 Compose project，共用外部网络 `glseven`，每域占 `172.18.<域号>.x`。`depends_on` 只在单个文件内有效；跨域依赖被刻意省略，改由批次时序 + `restart: always` 兜底。
+**分层 Compose，不写跨 project 依赖。** 七个文件（`infra`、`observability`、`security`、`platform`、`apps`、`devops`、`portal`）一域一个，各自是独立 Compose project，共用外部网络 `glseven`，每域占 `172.18.<域号>.x`。`depends_on` 只在单个文件内有效；跨域依赖被刻意省略，改由批次时序 + `restart: always` 兜底。
 
-**`common/compose-list.sh` 是启动顺序的唯一数据源。** 它定义 `COMPOSE_FILES_BASE` / `_DEFERRED` / `_PORTAL` 与 Apple Silicon 的 observability 子集，`startup.sh`、`shutdown.sh` 共同消费。新增域只改这一个文件。时序：BASE（infra + observability）→ 等 MySQL healthy（120s 超时）→ DEFERRED（security + platform + apps）→ PORTAL。
+**`common/compose-list.sh` 是启动顺序的唯一数据源。** 它定义 `COMPOSE_FILES_BASE` / `_DEFERRED` / `_PORTAL` 与 Apple Silicon 的 observability 子集，`startup.sh`、`shutdown.sh` 共同消费。新增域只改这一个文件。时序：BASE（infra + observability）→ 等 MySQL healthy（120s 超时）→ DEFERRED（security + platform + apps）→ DEVOPS（仅 sit）→ PORTAL。
 
-**nginx（portal）是唯一持有宿主端口的容器。** 发布 28 个端口 = 8000 门户 + 11 个原生 HTTP 监听 + 16 条 stream 透明转发；其余 24 个服务 `ports:` 一律为空。配置按容器拆分：HTTP vhost 在 `portal/conf/conf.d/<容器名>.conf`（每个有 HTTP 入口的容器一个，另有 `00-default-catchall.conf` 处理裸 IP 与共享端口兜底，`00-` 前缀不可去掉），TCP 在 `portal/conf/stream-conf.d/<容器名>.conf`（11 个文件覆盖 16 条 stream）。核心规则：**nginx 监听端口 = 容器原生端口**，客户端连接串零改动。
+**nginx（portal）是唯一持有宿主端口的容器。** 发布 30 个端口 = 8000 门户 + 12 个原生 HTTP 监听 + 17 条 stream 透明转发；其余 26 个服务 `ports:` 一律为空。配置按容器拆分：HTTP vhost 在 `portal/conf/conf.d/<容器名>.conf`（每个有 HTTP 入口的容器一个，另有 `00-default-catchall.conf` 处理裸 IP 与共享端口兜底，`00-` 前缀不可去掉），TCP 在 `portal/conf/stream-conf.d/<容器名>.conf`（12 个文件覆盖 17 条 stream）。核心规则：**nginx 监听端口 = 容器原生端口**，客户端连接串零改动。
 
 **stream 上游在启动期静态解析服务名**，所以 portal 必须最后一批启动；不要提前单独拉起 nginx，也不要把它从批次里拆出来。
 
@@ -73,8 +73,8 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 
 ## CI 与发布
 
-- `.github/workflows/ci.yml`：PR 到 `develop`/`main` 与 push 到 `develop` 时运行；shell 语法、三个脚本测试、配置档案选择与 gitignore 断言、`compose config --env-file .env.local`、`check-consistency --strict`、改动行空白检查。`release.yml` 复用同一 workflow。
-- `.github/workflows/release.yml`：push 到 `main` 时先跑 CI，再由 `ci/scripts/next-version.sh` 按 Conventional Commits 计算版本，创建 annotated tag 与中文 GitHub Release（notes 由 `release-notes.sh` 生成）。同版本 tag 已存在但不可达 HEAD 会报错退出。
+- `.gitlab-ci.yml`：MR 与分支推送跑 `validate`（shell 语法、`ci/scripts/test-*.sh` 全量、`compose config --env-file .env.local`、`check-consistency --strict`、改动行空白检查）；push `develop` 自动 `deploy:sit`（改动 `docker-compose-devops.yml` 时跳过，需宿主手工部署）；手动 `deploy:sit:rollback` 回滚。
+- `release` 作业在 push `main` 时由 `ci/scripts/next-version.sh` 按 Conventional Commits 计算版本，用 Tags API 创建 annotated tag 与中文 GitLab Release（notes 由 `release-notes.sh --provider gitlab` 生成）。GitHub 仓库仅作 push mirror，Actions 已下线。
 - **提交类型直接决定发不发版**：`feat` → minor；`fix` / `perf` / `refactor` → patch；`<type>!:` 或正文 `BREAKING CHANGE:` → major；`docs` / `chore` / `ci` / `test` 等不触发发布。版本计算用 `git log --no-merges`：合并提交本身不计，但被合并分支上的提交计入。
 - 分支模型：`develop` 集成，`main` 发布；PR 通常指向 `develop`。提交信息用中文 + conventional 前缀；PR 描述写清影响服务、可见变化和已做验证。
 
@@ -92,4 +92,4 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 
 ## 平台限制
 
-以 `README.md` §「已知平台限制」为准，该节持续维护。要点：`sebp/elk` 仅 amd64，Apple Silicon 上启动即失败（`startup.sh` 自动跳过并继续其余服务）；Portainer 5 分钟未初始化会锁死，需重启容器取新 setup token；宿主 5000 端口（registry）与 macOS AirPlay Receiver 冲突；phpLDAPadmin 首次初始化后需导入一次 `openldap/bootstrap/admin-entry.ldif`。在新宿主上排查启动失败前，先读这一节。
+以 `README.md` §「已知平台限制」为准，该节持续维护。要点：`sebp/elk` 仅 amd64，Apple Silicon 上启动即失败（`startup.sh` 自动跳过并继续其余服务）；Portainer 5 分钟未初始化会锁死，需重启容器取新 setup token；宿主 5000 端口（registry）与 macOS AirPlay Receiver 冲突；phpLDAPadmin 首次初始化后需导入一次 `openldap/bootstrap/admin-entry.ldif`。在新宿主上排查启动失败前，先读这一节。GitLab/Runner 仅 `sit` 档案启动，本机 `local` 访问 `gitlab.glseven.local:8929` 返回 502 属预期。

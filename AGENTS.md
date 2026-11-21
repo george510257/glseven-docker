@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Docker Compose infrastructure repository, not an application codebase. The six domain files are the primary modules: `docker-compose-infra.yml`, `docker-compose-observability.yml`, `docker-compose-security.yml`, `docker-compose-platform.yml`, `docker-compose-apps.yml`, and `docker-compose-portal.yml`. Service settings live in `common/env/<service>.env`; deployment logic lives in `startup.sh`, `shutdown.sh`, and `common/`. Portal routing is under `portal/conf/conf.d` (HTTP) and `portal/conf/stream-conf.d` (TCP). Component-specific configuration, MySQL initialization SQL, assets, and design documents are under their matching service directories and `docs/`.
+This is a Docker Compose infrastructure repository, not an application codebase. The seven domain files are the primary modules: `docker-compose-infra.yml`, `docker-compose-observability.yml`, `docker-compose-security.yml`, `docker-compose-platform.yml`, `docker-compose-apps.yml`, `docker-compose-devops.yml` (GitLab + Runner, only started by the `sit` profile), and `docker-compose-portal.yml`. Service settings live in `common/env/<service>.env`; deployment logic lives in `startup.sh`, `shutdown.sh`, and `common/`. Portal routing is under `portal/conf/conf.d` (HTTP) and `portal/conf/stream-conf.d` (TCP). Component-specific configuration, MySQL initialization SQL, assets, and design documents are under their matching service directories and `docs/`.
 
 ## Build, Test, and Development Commands
 
@@ -16,7 +16,7 @@ bash ci/scripts/test-profile.sh
 bash ci/scripts/test-env-config.sh
 ```
 
-`startup.sh` runs preflight checks, creates volumes and the `glseven` network, then starts domains in batches. `shutdown.sh` stops them in reverse order. The two validation commands check Compose syntax and cross-file portal consistency. There is no application build or unit-test suite.
+`startup.sh` runs preflight checks, creates volumes and the `glseven` network, then starts domains in batches. `shutdown.sh` stops them in reverse order. The `devops` domain is profile-gated: only `--profile sit` starts GitLab and its runner. The two validation commands check Compose syntax and cross-file portal consistency. There is no application build or unit-test suite.
 
 ## Coding Style & Naming Conventions
 
