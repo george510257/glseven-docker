@@ -1,0 +1,123 @@
+stages:
+  - validate
+  - deploy
+  - release
+
+default:
+  image: docker:29.10.0-cli
+  before_script:
+    - apk add --no-cache bash git
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+
+validate:
+  stage: validate
+  script:
+    - |
+      set -euo pipefail
+      while IFS= read -r -d '' file; do bash -n "$file"; done < <(git ls-files -z '*.sh')
+    - |
+      set -euo pipefail
+      for test_script in ci/scripts/test-*.sh; do
+        echo "Running $test_script"
+        bash "$test_script"
+      done
+    - cp .env.local.example .env.local
+    - |
+      set -euo pipefail
+      shopt -s nullglob
+      files=(docker-compose-*.yml)
+      [[ ${#files[@]} -gt 0 ]]
+      for file in "${files[@]}"; do
+        echo "Validating $file"
+        docker compose --env-file .env.local -f "$file" config -q
+      done
+    - bash common/check-consistency.sh --strict
+    - |
+      set -euo pipefail
+      empty_tree="$(git hash-object -t tree /dev/null)"
+      if [ -n "${CI_MERGE_REQUEST_DIFF_BASE_SHA:-}" ]; then
+        git diff --check "$CI_MERGE_REQUEST_DIFF_BASE_SHA" HEAD
+      elif [ -n "${CI_COMMIT_BEFORE_SHA:-}" ] &&
+        ! printf '%s' "$CI_COMMIT_BEFORE_SHA" | grep -qx '0*' &&
+        git cat-file -e "$CI_COMMIT_BEFORE_SHA^{commit}" 2>/dev/null; then
+        git diff --check "$CI_COMMIT_BEFORE_SHA" HEAD
+      else
+        git diff --check "$empty_tree" HEAD
+      fi
+
+deploy:sit:
+  stage: deploy
+  needs: ["validate"]
+  environment:
+    name: sit
+  resource_group: sit
+  rules:
+    # devops 本体变更会重启 GitLab/Runner 并中断作业，必须宿主手工部署
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      changes:
+        - docker-compose-devops.yml
+      when: never
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      when: on_success
+  script:
+    - bash ci/deploy-sit.sh
+
+deploy:sit:rollback:
+  stage: deploy
+  needs: ["validate"]
+  environment:
+    name: sit
+  resource_group: sit
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+  variables:
+    TARGET_SHA: "$ROLLBACK_SHA"
+  script:
+    - |
+      set -euo pipefail
+      [ -n "${ROLLBACK_SHA:-}" ] || { echo "ROLLBACK_SHA is required" >&2; exit 2; }
+      bash ci/deploy-sit.sh
+
+release:
+  stage: release
+  needs: ["validate"]
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
+  variables:
+    GIT_DEPTH: "0"
+    REPO_SERVER_URL: "$CI_SERVER_URL"
+  script:
+    - |
+      set -euo pipefail
+      output="$(bash ci/scripts/next-version.sh)"
+      printf '%s\n' "$output"
+      eval "$output"
+      if [ "$release" != "true" ] || [ "$tag_on_head" = "true" ]; then
+        echo "No releasable Conventional Commits; skipping release."
+        exit 0
+      fi
+      bash ci/scripts/release-notes.sh \
+        --from "$previous_tag" --to "$version" \
+        --repository "$CI_PROJECT_PATH" --provider gitlab \
+        > /tmp/release-notes.md
+      RELEASE_TOKEN="${RELEASE_TOKEN:?RELEASE_TOKEN is required}"
+      curl -fsS --request POST \
+        --header "PRIVATE-TOKEN: $RELEASE_TOKEN" \
+        --data-urlencode "tag_name=$version" \
+        --data-urlencode "ref=$CI_COMMIT_SHA" \
+        --data-urlencode "message=$version" \
+        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/repository/tags" >/dev/null
+      curl -fsS --request POST \
+        --header "PRIVATE-TOKEN: $RELEASE_TOKEN" \
+        --data-urlencode "name=$version" \
+        --data-urlencode "tag_name=$version" \
+        --data-urlencode "description@/tmp/release-notes.md" \
+        "$CI_API_V4_URL/projects/$CI_PROJECT_ID/releases" >/dev/null
+      echo "Released $version"
