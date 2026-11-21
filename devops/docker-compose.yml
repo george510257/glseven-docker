@@ -20,6 +20,9 @@ services:
     environment:
       GITLAB_OMNIBUS_CONFIG: |
         external_url 'http://gitlab.glseven.local:8080'
+        # external_url 的端口即容器内 omnibus nginx 监听端口；Puma 默认也绑 8080，
+        # 必须错开，否则 puma 反复 EADDRINUSE、/-/readiness 恒 502（2026-11-22 sit 实测）。
+        puma['port'] = 8082
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
         gitlab_rails['time_zone'] = 'Asia/Shanghai'
         # 健康端点（/-/readiness）默认仅允许 localhost；门户经 172.18/16 代理，需放行容器网段。

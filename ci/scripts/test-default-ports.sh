@@ -59,6 +59,7 @@ check_gitlab() {
   file_has   portal/docker-compose.yml '"2222:2222"' "portal compose 发布 2222"
   file_lacks portal/docker-compose.yml '"2224:2224"' "portal compose 不再发布 2224"
   file_has   devops/docker-compose.yml "external_url 'http://gitlab.glseven.local:8080'" "GitLab external_url 8080"
+  file_has   devops/docker-compose.yml "puma['port'] = 8082" "Puma 内部端口 8082（避开 external_url 的 8080）"
   file_has   devops/docker-compose.yml "gitlab_shell_ssh_port'] = 2222" "GitLab ssh port 2222"
   file_has   devops/docker-compose.yml 'localhost:8080/-/readiness' "GitLab healthcheck 8080"
   file_lacks devops/docker-compose.yml '8929' "GitLab compose 不再用 8929"
