@@ -45,7 +45,7 @@ jobs:
           [[ ${#files[@]} -gt 0 ]]
           for file in "${files[@]}"; do
             echo "Validating $file"
-            docker compose -f "$file" config -q
+            docker compose --env-file .env -f "$file" config -q
           done
 
       - name: Check portal consistency

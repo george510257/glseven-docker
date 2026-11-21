@@ -68,7 +68,7 @@ bash shutdown.sh
 | XXL-JOB | http://xxl-job-admin.glseven.local:8080/xxl-job-admin/ | 控制台（context-path 保留前缀） |
 | Nexus | http://nexus3.glseven.local:8081 | Web UI（Docker Registry 走 localhost:5000） |
 | Portainer | http://portainer.glseven.local:9000 | 容器管理 |
-| APISIX | http://apisix.glseven.local:9180/ui | Dashboard / Admin API（X-API-KEY 见 apisix/conf/config.yaml）；数据面 :9080 |
+| APISIX | http://apisix.glseven.local:9180/ui | Dashboard / Admin API（X-API-KEY 见 platform/apisix/conf/config.yaml）；数据面 :9080 |
 | Prometheus | http://prometheus.glseven.local:9090 | 指标（7 个抓取 job） |
 | Grafana | http://grafana.glseven.local:3000 | 可视化（数据源已 provision） |
 | Kibana | http://elk.glseven.local:5601 | 日志检索（ES API 同域名 :9200） |
@@ -87,8 +87,8 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 
 - **env 分层**：每个服务一个 `<域>/env/<service>.env`，compose 通过 `env_file` 引用；含默认凭据的文件顶部有 WARNING 注释，生产部署前必须修改。
 - **服务互访走服务名**（Docker DNS），不硬编码 IP；固定 IP 仅用于宿主侧排查与防火墙放行。
-- **监控接入**：`prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。
-- **日志接入**：`filebeat`（observability 域，172.18.2.4）经 Docker 容器日志接口采集，直发 `elk:5044` 的 logstash；`elk/logstash/config/02-beats-input.conf` 覆盖镜像内置输入为**明文**（内置版要求 TLS）。Kibana 索引前缀为 `filebeat-`（非 `logstash-*`）。
+- **监控接入**：`observability/prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。
+- **日志接入**：`filebeat`（observability 域，172.18.2.4）经 Docker 容器日志接口采集，直发 `elk:5044` 的 logstash；`observability/elk/logstash/config/02-beats-input.conf` 覆盖镜像内置输入为**明文**（内置版要求 TLS）。Kibana 索引前缀为 `filebeat-`（非 `logstash-*`）。
 - **新增服务的同步点**：加一个服务要改 5 处——`<域>/docker-compose.yml`、`portal/docker-compose.yml`（ports）、`portal/conf/{conf.d,stream-conf.d}/<服务名>.conf`、`portal/html/index.html` 卡片、README 的 /etc/hosts 清单与访问矩阵。`common/check-consistency.sh`（preflight 第 8 步）会机械校验这些同步点，漏改会告警但不阻断启动。
 
 ## 容器日志轮转与 etcd 风险边界
@@ -107,14 +107,14 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 ### APISIX 3.18.0
 
 - 独立网关组件：数据面 :9080 + Admin API :9180，**路由留空**由微服务开发自行配置（无路由时数据面 404 为预期）。
-- 内置 Dashboard 访问入口为 `/ui/`，配置与路由管理走 Admin API，`X-API-KEY` 见 `apisix/conf/config.yaml`。
+- 内置 Dashboard 访问入口为 `/ui/`，配置与路由管理走 Admin API，`X-API-KEY` 见 `platform/apisix/conf/config.yaml`。
 - 配置存储为 infra 域的 etcd（3.6.14 成熟线）；`allow_admin: 0.0.0.0/0` 由 X-API-KEY 守卫（无/错 key 401），取舍说明见配置文件注释。
 
 ### ELK + filebeat 日志闭环
 
 - `sebp/elk` 提供 ES(9200)/Kibana(5601)/logstash(5044)；`filebeat` 采集容器日志发往 logstash，索引前缀 `filebeat-`。
 - **`sebp/elk` 镜像不含 filebeat**（上游 Dockerfile 只装 ES/Logstash/Kibana 三件），filebeat 必须独立部署——上游仓库的 `nginx-filebeat/` 也是独立容器示例，本编排方式与其一致。
-- 内置 beats 输入**要求 TLS**（镜像自签证书，上游示例 filebeat.yml 即配 `certificate_authorities`），本编排以 `elk/logstash/config/02-beats-input.conf` 覆盖为明文——glseven 为隔离的开发环境网络，与全栈其余明文组件一致。恢复 TLS 的方法见该文件头注释。
+- 内置 beats 输入**要求 TLS**（镜像自签证书，上游示例 filebeat.yml 即配 `certificate_authorities`），本编排以 `observability/elk/logstash/config/02-beats-input.conf` 覆盖为明文——glseven 为隔离的开发环境网络，与全栈其余明文组件一致。恢复 TLS 的方法见该文件头注释。
 - 输入类型用 `filestream` + `parsers.container`，**不是** `type: container`：后者是已弃用的 `log` 输入预设，9.0 起禁用（filebeat 9.x 上直接失效）。
 - 按 `container.name` 过滤依赖 `add_docker_metadata` 从日志路径提取容器 ID，两者缺一不可；排除自身与 nginx（后者请求日志量大且已落盘轮转）。
 - 探针用 `filebeat test output` 而非 `test config`：后者只校验 YAML 语法，配置对但连不上 logstash 会假报健康。
@@ -190,7 +190,7 @@ flush privileges;
 升级在首次 `bash startup.sh` 拉起时自动完成（MySQL 9.7 数据字典、Grafana 13 unified storage、Open WebUI DB 迁移、Elasticsearch 9.5 等均为自动且**不可逆**，拉起前请确认已有备份）：
 
 1. **RabbitMQ**：升级前在旧容器执行一次 `docker exec rabbitmq rabbitmqctl enable_feature_flag all`（4.3 硬性前置）。
-2. **nacos**（库 nacos_devtest）：init 脚本只对全新初始化生效，存量库需手动执行 `mysql/docker-entrypoint-initdb.d/nacos-mysql.sql` 末尾 3 张新表 DDL（pipeline_execution / ai_resource / ai_resource_version）；不执行则 v3.2 新功能不可用，核心功能不受影响。
+2. **nacos**（库 nacos_devtest）：init 脚本只对全新初始化生效，存量库需手动执行 `infra/mysql/docker-entrypoint-initdb.d/nacos-mysql.sql` 末尾 3 张新表 DDL（pipeline_execution / ai_resource / ai_resource_version）；不执行则 v3.2 新功能不可用，核心功能不受影响。
 3. **xxl-job**（库 xxl_job）5 条 ALTER + 1 条可选索引清理：
 
    ```sql
