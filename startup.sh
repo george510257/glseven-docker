@@ -76,7 +76,7 @@ fi
 # 启动基础设施服务
 echo "Starting base services..."
 for group in "${COMPOSE_FILES_BASE[@]}"; do
-  docker compose -f "docker-compose-${group}.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
+  docker compose --env-file "$SCRIPT_DIR/.env" -f "${group}/docker-compose.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
   echo "✓ ${group} services started"
 done
 
@@ -98,14 +98,14 @@ echo "✓ MySQL is healthy"
 # 启动依赖 MySQL 的服务
 echo "Starting deferred services..."
 for group in "${COMPOSE_FILES_DEFERRED[@]}"; do
-  docker compose -f "docker-compose-${group}.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
+  docker compose --env-file "$SCRIPT_DIR/.env" -f "${group}/docker-compose.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
   echo "✓ ${group} services started"
 done
 
 # 启动导航门户（最后一批）
 echo "Starting portal..."
 for group in "${COMPOSE_FILES_PORTAL[@]}"; do
-  docker compose -f "docker-compose-${group}.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
+  docker compose --env-file "$SCRIPT_DIR/.env" -f "${group}/docker-compose.yml" up -d || { echo "Error: ${group} services failed to start"; exit 1; }
   echo "✓ ${group} services started"
 done
 

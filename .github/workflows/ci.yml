@@ -41,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          files=(docker-compose-*.yml)
+          files=(*/docker-compose.yml)
           [[ ${#files[@]} -gt 0 ]]
           for file in "${files[@]}"; do
             echo "Validating $file"

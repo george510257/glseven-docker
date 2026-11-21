@@ -67,7 +67,7 @@ ensure_env_file() {
     cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env" || { echo "Error: failed to create $SCRIPT_DIR/.env"; exit 1; }
     # 本步在 fix_dir_permissions 之后执行，新生 .env（默认 644）需立即收紧
     chmod 600 "$SCRIPT_DIR/.env" 2>/dev/null || echo "WARN: chmod 600 $SCRIPT_DIR/.env failed, continuing..."
-    echo "WARN: review $SCRIPT_DIR/.env and common/env/*.env for default credentials before production use."
+    echo "WARN: review $SCRIPT_DIR/.env and */env/*.env for default credentials before production use."
   fi
 }
 
@@ -101,7 +101,7 @@ clean_orphan_bridges() {
 #    PREFLIGHT_REGISTRY_MIRRORS 逐代理尝试，全部失败兜底直连
 pull_registry_images() {
   local img entry registry mirror mirror_img pulled
-  for img in $(grep -hoE "image:[[:space:]]*(ghcr\.io|quay\.io)/[A-Za-z0-9_./:-]+" "$SCRIPT_DIR"/docker-compose-*.yml 2>/dev/null | awk '{print $2}' | sort -u); do
+  for img in $(grep -hoE "image:[[:space:]]*(ghcr\.io|quay\.io)/[A-Za-z0-9_./:-]+" "$SCRIPT_DIR"/*/docker-compose.yml 2>/dev/null | awk '{print $2}' | sort -u); do
     docker image inspect "$img" >/dev/null 2>&1 && continue
     echo "Preflight 5/8: $img missing locally, pulling via mirror..."
     pulled=""
@@ -129,7 +129,7 @@ pull_registry_images() {
 #    Linux 用 ss（占用者进程名 docker-proxy），macOS 用 lsof（com.docker.backend），语义一致。
 check_published_ports() {
   local port occupier issues=0
-  for port in $(grep -oE '"[0-9]+:[0-9]+"' "$SCRIPT_DIR/docker-compose-portal.yml" 2>/dev/null | cut -d'"' -f2 | cut -d: -f1 | sort -un); do
+  for port in $(grep -oE '"[0-9]+:[0-9]+"' "$SCRIPT_DIR/portal/docker-compose.yml" 2>/dev/null | cut -d'"' -f2 | cut -d: -f1 | sort -un); do
     if preflight_on_linux; then
       occupier=$(ss -tlnp 2>/dev/null | grep -E "[:.]$port[[:space:]]" | grep -oE '\(\("[a-zA-Z0-9_-]+"' | head -1 | tr -d '("')
       if [ -z "$occupier" ] || [ "$occupier" = "docker-proxy" ]; then continue; fi
@@ -141,7 +141,7 @@ check_published_ports() {
       if [ -z "$occupier" ]; then continue; fi
     fi
     echo "Error: host port $port is occupied by '$occupier' (nginx portal will fail to bind)."
-    echo "Hint: stop the conflicting host service, or remap the host-side port in docker-compose-portal.yml."
+    echo "Hint: stop the conflicting host service, or remap the host-side port in portal/docker-compose.yml."
     issues=1
   done
   if [ "$issues" -ne 0 ]; then exit 1; fi

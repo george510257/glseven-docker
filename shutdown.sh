@@ -19,7 +19,9 @@ stop_all() {
     group=${groups[$i]}
     # -t 60：默认 10s 对 kafka/elk/mysql 偏短，强制 kill 易留脏存储。
     # 不用 stop 替代 down：容器留着会占住 glseven 网络，致随后的 network rm 失败。
-    docker compose -f "docker-compose-${group}.yml" down -t 60 2>/dev/null && echo "✓ ${group} services stopped" || echo "- ${group} not running"
+    local env_args=()
+    if [ -f "$SCRIPT_DIR/.env" ]; then env_args=(--env-file "$SCRIPT_DIR/.env"); fi
+    docker compose "${env_args[@]}" -f "${group}/docker-compose.yml" down -t 60 2>/dev/null && echo "✓ ${group} services stopped" || echo "- ${group} not running"
   done
 }
 

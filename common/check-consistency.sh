@@ -36,7 +36,7 @@ warn() { echo "  [!] $*"; issues=$((issues + 1)); }
 
 # 从全部 compose 文件提取服务的 container_name / hostname 对。
 # 用 awk 按服务块切分，避免引入 yq 依赖（preflight 只能依赖 docker/bash/grep 这类必有工具）。
-services=$(for f in docker-compose-*.yml; do
+services=$(for f in */docker-compose.yml; do
   awk -v file="$f" '
     /^  [a-z0-9-]+:$/ { name=$1; sub(/:$/,"",name) }
     /^    container_name:/ { cn=$2 }
