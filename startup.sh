@@ -112,6 +112,7 @@ DIR_SPECS=(
   "gitlab/data 998"
   "gitlab-runner/config 0"
   "gitlab-runner/cache 0"
+  "gitlab-runner/home 0"
 )
 
 echo "Creating directories..."

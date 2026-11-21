@@ -15,7 +15,7 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 grep -q 'profile_includes_devops' "$ROOT/startup.sh" || fail "startup.sh 未使用门控函数"
 grep -q 'profile_includes_devops' "$ROOT/shutdown.sh" || fail "shutdown.sh 未使用门控函数"
-for dir in gitlab/config gitlab/logs gitlab/data gitlab-runner/config gitlab-runner/cache; do
+for dir in gitlab/config gitlab/logs gitlab/data gitlab-runner/config gitlab-runner/cache gitlab-runner/home; do
   grep -q "\"$dir " "$ROOT/startup.sh" || fail "DIR_SPECS 缺少 $dir"
 done
 
