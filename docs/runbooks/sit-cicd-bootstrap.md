@@ -58,7 +58,7 @@ concurrent = 1
 
 4. 重启并验证：
 
-> 从旧版本升级：`config.toml` 位于数据目录、不在仓库中，`url` 需手动改为 `http://gitlab:8080`，再执行 `docker restart gitlab-runner`；已有项目的 HTTP remote 也需同步改到 8080。
+> 从旧版本升级：`config.toml` 位于数据目录、不在仓库中，`url` 需手动改为 `http://gitlab:8080`，再执行 `docker restart gitlab-runner`；已有项目的 HTTP remote 同步改到 8080、SSH remote 改到 2222（旧端口已释放）；GitLab 需重建容器并等待首次 reconfigure（约数分钟）。
 
 ```bash
 docker restart gitlab-runner

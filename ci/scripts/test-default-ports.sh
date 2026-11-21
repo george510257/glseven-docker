@@ -17,6 +17,24 @@ file_lacks() {
   if grep -qF -- "$2" "$1"; then fail_check "$3（仍有 $2）"; else pass "$3"; fi
 }
 
+check_8080_names() {
+  local names dupes
+  names=$(for f in portal/conf/conf.d/*.conf; do
+    case "$f" in *.local.conf) continue ;; esac
+    awk '{ gsub(/;/, ";\n"); print }' "$f" |
+      awk '
+        /listen[[:space:]]+8080/ { want = 1; next }
+        want && /server_name[[:space:]]+/ { n = $2; sub(/;$/, "", n); print n; want = 0 }
+      '
+  done | sort)
+  dupes=$(printf '%s\n' "$names" | uniq -d)
+  if [[ -n "$dupes" ]]; then
+    fail_check "8080 server_name 重复：$(echo "$dupes")"
+  else
+    pass "8080 server_name 唯一（$(printf '%s\n' "$names" | wc -l | tr -d ' ') 个）"
+  fi
+}
+
 check_portal() {
   echo "portal:"
   file_has   portal/docker-compose.yml '"8080:8080"' "portal compose 发布 8080"
@@ -27,6 +45,7 @@ check_portal() {
   file_has   portal/conf/conf.d/portal.conf 'portal.glseven.local:8080' "根域 301 指向 8080"
   file_lacks portal/conf/conf.d/00-default-catchall.conf ':8000' "catchall 不再指向 8000"
   file_has   portal/conf/conf.d/00-default-catchall.conf 'portal.glseven.local:8080' "catchall 指向 8080"
+  check_8080_names
 }
 
 check_gitlab() {
@@ -55,6 +74,8 @@ check_docs() {
   file_lacks CLAUDE.md ':8929' "CLAUDE.md 不再有 :8929"
   file_lacks docs/runbooks/sit-cicd-bootstrap.md '8929' "runbook 不再有 8929"
   file_lacks docs/runbooks/sit-cicd-bootstrap.md '2224' "runbook 不再有 2224"
+  file_has   docs/runbooks/sit-cicd-bootstrap.md 'SSH remote' "runbook 提示 SSH remote 改 2222"
+  file_has   docs/runbooks/sit-cicd-bootstrap.md 'reconfigure' "runbook 提示 GitLab reconfigure"
 }
 
 check_ci() {
