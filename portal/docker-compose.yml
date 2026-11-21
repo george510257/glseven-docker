@@ -16,13 +16,13 @@ services:
     hostname: nginx
     restart: always
     env_file:
-      - common/env/common.env
+      - ../common/env/common.env
     volumes:
-      - ./portal/conf/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./portal/conf/snippets:/etc/nginx/snippets:ro
-      - ./portal/conf/conf.d:/etc/nginx/conf.d:ro
-      - ./portal/conf/stream-conf.d:/etc/nginx/stream-conf.d:ro
-      - ./portal/html:/usr/share/nginx/html:ro
+      - ./conf/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./conf/snippets:/etc/nginx/snippets:ro
+      - ./conf/conf.d:/etc/nginx/conf.d:ro
+      - ./conf/stream-conf.d:/etc/nginx/stream-conf.d:ro
+      - ./html:/usr/share/nginx/html:ro
     networks:
       glseven:
         ipv4_address: 172.18.6.1
@@ -45,7 +45,7 @@ services:
       - "1883:1883"    # stream → rabbitmq MQTT
       - "15675:15675"  # stream → rabbitmq MQTT-WS
       - "9092:9092"    # stream → kafka PLAINTEXT（存量兼容透传：宿主旧 hosts 路径；容器网络内直连不经 nginx）
-      - "29092:29092"  # stream → kafka EXTERNAL（宿主/局域网客户端入口，advertised 见 common/env/kafka.env）
+      - "29092:29092"  # stream → kafka EXTERNAL（宿主/局域网客户端入口，advertised 见 infra/env/kafka.env）
       - "2379:2379"    # stream → etcd（HTTP REST/gRPC 透传）
       - "389:389"      # stream → openldap
       - "636:636"      # stream → openldap LDAPS
