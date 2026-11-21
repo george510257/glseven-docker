@@ -14,7 +14,7 @@ services:
     hostname: prometheus
     restart: always
     env_file:
-      - common/env/common.env
+      - ../common/env/common.env
     volumes:
       - ./prometheus/conf/prometheus.yml:/etc/prometheus/prometheus.yml
       - ${DOCKER_VOLUME:-/docker/glseven}/prometheus/data:/prometheus
@@ -35,7 +35,7 @@ services:
     hostname: grafana
     restart: always
     env_file:
-      - common/env/common.env
+      - ../common/env/common.env
     volumes:
       - ./grafana/conf/provisioning:/etc/grafana/provisioning
       - ./grafana/conf/dashboards:/var/lib/grafana/dashboards
@@ -66,7 +66,7 @@ services:
     restart: always
     user: root          # 读 /var/lib/docker/containers 与 docker.sock 需要 root
     env_file:
-      - common/env/common.env
+      - ../common/env/common.env
     volumes:
       - ./filebeat/conf/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -95,7 +95,7 @@ services:
     hostname: elk
     restart: always
     env_file:
-      - common/env/common.env
+      - ../common/env/common.env
     volumes:
       - ./elk/kibana/config/kibana.yml:/opt/kibana/config/kibana.yml
       # 覆盖内置 beats 输入为明文（内置版要求 TLS，见该文件头注释）。
