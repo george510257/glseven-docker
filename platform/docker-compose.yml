@@ -14,8 +14,8 @@ services:
     hostname: nacos
     restart: always
     env_file:
-      - common/env/common.env
-      - common/env/nacos.env
+      - ../common/env/common.env
+      - env/nacos.env
     volumes:
       - ${DOCKER_VOLUME:-/docker/glseven}/nacos/logs:/home/nacos/logs
       - ./nacos/config/custom.properties:/home/nacos/init.d/custom.properties
@@ -38,7 +38,7 @@ services:
     hostname: xxl-job-admin
     restart: always
     env_file:
-      - common/env/common.env
+      - ../common/env/common.env
     volumes:
       - ${DOCKER_VOLUME:-/docker/glseven}/xxl-job-admin/logs:/data/applogs
       - ./xxl-job-admin/application.properties:/application.properties
@@ -59,7 +59,7 @@ services:
     hostname: nexus3
     restart: always
     env_file:
-      - common/env/common.env
+      - ../common/env/common.env
     volumes:
       - ${DOCKER_VOLUME:-/docker/glseven}/nexus3/data:/nexus-data
     networks:
@@ -81,7 +81,7 @@ services:
     hostname: portainer
     restart: always
     env_file:
-      - common/env/common.env
+      - ../common/env/common.env
     volumes:
       - ${DOCKER_VOLUME:-/docker/glseven}/portainer/data:/data
       - /var/run/docker.sock:/var/run/docker.sock
@@ -100,7 +100,7 @@ services:
     hostname: apisix
     restart: always
     env_file:
-      - common/env/common.env
+      - ../common/env/common.env
     volumes:
       - ./apisix/conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
     networks:

@@ -15,8 +15,8 @@ services:
     restart: always
     tty: true
     env_file:
-      - common/env/common.env
-      - common/env/ollama.env
+      - ../common/env/common.env
+      - env/ollama.env
     volumes:
       - ${DOCKER_VOLUME:-/docker/glseven}/ollama:/root/.ollama
     networks:
@@ -49,8 +49,8 @@ services:
     hostname: open-webui
     restart: always
     env_file:
-      - common/env/common.env
-      - common/env/open-webui.env
+      - ../common/env/common.env
+      - env/open-webui.env
     volumes:
       - ${DOCKER_VOLUME:-/docker/glseven}/open-webui/data:/app/backend/data
     depends_on:
@@ -74,8 +74,8 @@ services:
     hostname: moontv
     restart: always
     env_file:
-      - common/env/common.env
-      - common/env/moontv.env
+      - ../common/env/common.env
+      - env/moontv.env
     # redis 在 infra 域：跨 compose project 不写 depends_on，由 BASE 先于 DEFERRED 启动时序 + restart: always 兜底。
     environment:
       # Overrides REDIS_URL from moontv.env; password sourced from .env (REDIS_PASSWORD).
@@ -99,8 +99,8 @@ services:
     init: true                    # 回收 Chromium 僵尸进程
     restart: always
     env_file:
-      - common/env/common.env
-      - common/env/iptv.env
+      - ../common/env/common.env
+      - env/iptv.env
     volumes:
       # /migu/data 是镜像内置 VOLUME；不显式覆盖时每次重建容器都会生成匿名 hash 卷。
       - ${DOCKER_VOLUME:-/docker/glseven}/iptv/data:/iptv/data
