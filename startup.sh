@@ -89,9 +89,21 @@ chown_dir() {
   fi
 }
 
+# 只改目录本身属主、不递归：GitLab 的 config/logs/data 由多个服务用户共同持有
+# （git=998、gitlab-redis=997、gitlab-psql=996…），递归 chown 会破坏既有文件属主。
+chown_top() {
+  local dir="$1" uid="$2"
+  if ! chown "$uid" "$dir" 2>/dev/null; then
+    echo "WARN: chown $uid $dir failed (non-root or unsupported platform), continuing..."
+  fi
+}
+
 # 创建必要的目录并设置权限（目录创建失败仍致命）
-# 表驱动：每条为 "<相对 DOCKER_VOLUME 的路径> <宿主属主 uid>"。新增非 root 容器时在此加一行即可，
+# 表驱动：每条为 "<相对 DOCKER_VOLUME 的路径> <宿主属主 uid> [top]"。新增非 root 容器时在此加一行即可，
 # 无需改下面的创建/授权/恢复 mode 三段逻辑（原先散在四处硬编码，易漏，2026-09-21 审查后收敛）。
+# top 表示只 chown 顶层目录、不递归：GitLab 的 config/logs/data 由多个服务用户共同持有，
+# 递归 chown 会把 redis(997)/postgresql(996) 的既有文件刷成 998，重部署后这两个服务无法启动
+# （2026-11-22 sit 重部署实测：dump.rdb Permission denied，gitlab-ctl status 两者 down）。
 # 属主 uid 依据：nexus3=200、prometheus=65534(nobody)、grafana=472、elk/kafka=1000、phpldapadmin=82(www-data)、gitlab=998。
 # kafka 是 2026-09-21 修复「数据不落盘」时新增：设了 KAFKA_LOG_DIRS 后 compose 会预建
 # /var/lib/kafka/data 挂载点，属主不是 1000(appuser) 则 broker 起不来。
@@ -107,9 +119,9 @@ DIR_SPECS=(
   "phpldapadmin 82"
   "phpldapadmin/sessions 82"
   "phpldapadmin/logs 82"
-  "gitlab/config 0"
-  "gitlab/logs 998"
-  "gitlab/data 998"
+  "gitlab/config 0 top"
+  "gitlab/logs 998 top"
+  "gitlab/data 998 top"
   "gitlab-runner/config 0"
   "gitlab-runner/cache 0"
   "gitlab-runner/home 0"
@@ -117,10 +129,14 @@ DIR_SPECS=(
 
 echo "Creating directories..."
 for spec in "${DIR_SPECS[@]}"; do
-  dir="$DOCKER_VOLUME/${spec% *}"
-  uid="${spec##* }"
+  read -r rel uid mode <<< "$spec"
+  dir="$DOCKER_VOLUME/$rel"
   mkdir -p "$dir" || { echo "Error: Failed to create directory $dir"; exit 1; }
-  chown_dir "$dir" "$uid"
+  if [ "$mode" = "top" ]; then
+    chown_top "$dir" "$uid"
+  else
+    chown_dir "$dir" "$uid"
+  fi
 done
 
 # fnOS(trimacl) 等存储层会把新建目录权限位剥成 000（实测 mkdir/touch 均然；dockerd 代建的 bind 源
@@ -128,7 +144,8 @@ done
 # preflight 的数据目录修复跑在本块之前、fresh 卷场景恒空转，须在此显式恢复 mode（幂等）。
 chmod 755 "$DOCKER_VOLUME" 2>/dev/null || echo "WARN: chmod 755 $DOCKER_VOLUME failed, continuing..."
 for spec in "${DIR_SPECS[@]}"; do
-  dir="$DOCKER_VOLUME/${spec% *}"
+  read -r rel _mode <<< "$spec"
+  dir="$DOCKER_VOLUME/$rel"
   chmod 755 "$dir" 2>/dev/null || echo "WARN: chmod 755 $dir failed, continuing..."
 done
 
