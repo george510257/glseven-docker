@@ -113,7 +113,7 @@ chmod 644 "$permissions_dir/.env" "$permissions_dir/.env.local" "$permissions_di
   tighten_env_permissions
 )
 file_mode() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1"
 }
 [ "$(file_mode "$permissions_dir/.env")" = "600" ] || fail "legacy .env must be chmod 600"
 [ "$(file_mode "$permissions_dir/.env.local")" = "600" ] || fail "profile must be chmod 600"
