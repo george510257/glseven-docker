@@ -36,11 +36,14 @@ jobs:
       - name: Prepare Compose environment
         run: cp .env.local.example .env.local
 
-      - name: Test profile selection
-        run: bash .github/scripts/test-profile.sh
-
-      - name: Test env config invariants
-        run: bash .github/scripts/test-env-config.sh
+      - name: Run script tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test_script in ci/scripts/test-*.sh; do
+            echo "Running $test_script"
+            bash "$test_script"
+          done
 
       - name: Assert profiles are ignored
         shell: bash
@@ -53,12 +56,6 @@ jobs:
             echo "::error::.env.local.example must not be ignored"
             exit 1
           fi
-
-      - name: Test Docker volume resolution
-        run: bash .github/scripts/test-docker-volume.sh
-
-      - name: Test startup platform selection
-        run: bash .github/scripts/test-startup-platform.sh
 
       - name: Validate Compose files
         shell: bash
@@ -74,9 +71,6 @@ jobs:
 
       - name: Check portal consistency
         run: bash common/check-consistency.sh --strict
-
-      - name: Test release scripts
-        run: bash .github/scripts/test-release-scripts.sh
 
       - name: Check changed lines for whitespace errors
         shell: bash

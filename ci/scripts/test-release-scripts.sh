@@ -329,7 +329,7 @@ run_next_version_tests() {
 
 run_release_notes_tests() {
   local output breaking_hash feat_hash fix_hash perf_hash refactor_hash docs_hash chore_hash
-  local body_breaking_hash docs_only_hash
+  local body_breaking_hash docs_only_hash gitlab_feat_hash
   local base_branch merge_feature_hash merge_parents
   local untagged_hash tagged_init_hash tagged_feature_hash
   local initial_init_hash initial_feature_hash expected_date
@@ -515,6 +515,28 @@ run_release_notes_tests() {
   assert_contains "$output" "初始版本 v0.1.0" "initial release entry"
   assert_contains "$output" "https://github.com/owner/repo/commits/v0.1.0" "initial release link"
   assert_section_order "$output" "## 功能|## 其他|## 完整变更"
+
+  # GitLab provider：链接路径带 /-/ 前缀
+  new_repo
+  init_v1
+  commit_file "feat(ci): GitLab 发布链接"
+  gitlab_feat_hash="$(git rev-parse HEAD)"
+  git tag -a v1.0.1 -m "v1.0.1"
+  output="$(
+    REPO_SERVER_URL="https://gitlab.example/" \
+      "$BASH_UNDER_TEST" "$RELEASE_NOTES" \
+        --from v1.0.0 \
+        --to v1.0.1 \
+        --repository glseven/glseven-docker \
+        --provider gitlab
+  )"
+  assert_contains "$output" "https://gitlab.example/glseven/glseven-docker/-/commit/${gitlab_feat_hash}" "gitlab provider commit link"
+  assert_contains "$output" "https://gitlab.example/glseven/glseven-docker/-/compare/v1.0.0...v1.0.1" "gitlab provider compare link"
+  assert_not_contains "$output" "gitlab.example//glseven" "gitlab single-slash server URL"
+
+  # 未知 provider 必须报错
+  assert_cli_failure "unknown provider" "unknown provider: svn" \
+    --to v1.0.1 --repository x/y --provider svn
 
   printf 'release-notes tests: OK\n'
 }

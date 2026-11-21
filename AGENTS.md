@@ -12,8 +12,8 @@ bash startup.sh --profile local [data-directory]
 bash shutdown.sh
 for file in docker-compose-*.yml; do docker compose --env-file .env.local -f "$file" config -q; done
 bash common/check-consistency.sh
-bash .github/scripts/test-profile.sh
-bash .github/scripts/test-env-config.sh
+bash ci/scripts/test-profile.sh
+bash ci/scripts/test-env-config.sh
 ```
 
 `startup.sh` runs preflight checks, creates volumes and the `glseven` network, then starts domains in batches. `shutdown.sh` stops them in reverse order. The two validation commands check Compose syntax and cross-file portal consistency. There is no application build or unit-test suite.

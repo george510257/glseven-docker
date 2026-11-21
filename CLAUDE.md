@@ -28,11 +28,11 @@ docker compose --env-file .env.local -f docker-compose-apps.yml up -d --force-re
 
 ```bash
 while IFS= read -r -d '' f; do bash -n "$f"; done < <(git ls-files -z '*.sh')
-bash .github/scripts/test-docker-volume.sh
-bash .github/scripts/test-profile.sh
-bash .github/scripts/test-startup-platform.sh
-bash .github/scripts/test-release-scripts.sh
-bash .github/scripts/test-env-config.sh
+bash ci/scripts/test-docker-volume.sh
+bash ci/scripts/test-profile.sh
+bash ci/scripts/test-startup-platform.sh
+bash ci/scripts/test-release-scripts.sh
+bash ci/scripts/test-env-config.sh
 for f in docker-compose-*.yml; do docker compose --env-file .env.local -f "$f" config -q; done
 bash common/check-consistency.sh --strict
 git diff --check
@@ -74,7 +74,7 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 ## CI 与发布
 
 - `.github/workflows/ci.yml`：PR 到 `develop`/`main` 与 push 到 `develop` 时运行；shell 语法、三个脚本测试、配置档案选择与 gitignore 断言、`compose config --env-file .env.local`、`check-consistency --strict`、改动行空白检查。`release.yml` 复用同一 workflow。
-- `.github/workflows/release.yml`：push 到 `main` 时先跑 CI，再由 `.github/scripts/next-version.sh` 按 Conventional Commits 计算版本，创建 annotated tag 与中文 GitHub Release（notes 由 `release-notes.sh` 生成）。同版本 tag 已存在但不可达 HEAD 会报错退出。
+- `.github/workflows/release.yml`：push 到 `main` 时先跑 CI，再由 `ci/scripts/next-version.sh` 按 Conventional Commits 计算版本，创建 annotated tag 与中文 GitHub Release（notes 由 `release-notes.sh` 生成）。同版本 tag 已存在但不可达 HEAD 会报错退出。
 - **提交类型直接决定发不发版**：`feat` → minor；`fix` / `perf` / `refactor` → patch；`<type>!:` 或正文 `BREAKING CHANGE:` → major；`docs` / `chore` / `ci` / `test` 等不触发发布。版本计算用 `git log --no-merges`：合并提交本身不计，但被合并分支上的提交计入。
 - 分支模型：`develop` 集成，`main` 发布；PR 通常指向 `develop`。提交信息用中文 + conventional 前缀；PR 描述写清影响服务、可见变化和已做验证。
 

@@ -4,6 +4,7 @@ set -euo pipefail
 from=""
 to=""
 repository=""
+provider="github"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -31,6 +32,14 @@ while [[ $# -gt 0 ]]; do
       repository="$2"
       shift 2
       ;;
+    --provider)
+      [[ $# -ge 2 && "$2" != --* ]] || {
+        printf 'missing value for --provider\n' >&2
+        exit 2
+      }
+      provider="$2"
+      shift 2
+      ;;
     *)
       printf 'unknown argument: %s\n' "$1" >&2
       exit 2
@@ -46,6 +55,13 @@ done
   printf 'missing --repository\n' >&2
   exit 2
 }
+case "$provider" in
+  github|gitlab) ;;
+  *)
+    printf 'unknown provider: %s\n' "$provider" >&2
+    exit 2
+    ;;
+esac
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -63,13 +79,18 @@ else
   fi
 fi
 
-server="${GITHUB_SERVER_URL:-https://github.com}"
+server="${REPO_SERVER_URL:-${GITHUB_SERVER_URL:-https://github.com}}"
 server="${server%/}"
+case "$provider" in
+  github) commit_path="/commit/"; compare_path="/compare/"; commits_path="/commits/" ;;
+  gitlab) commit_path="/-/commit/"; compare_path="/-/compare/"; commits_path="/-/commits/" ;;
+esac
 
 printf '发布日期：%s\n\n' "$(TZ=Asia/Shanghai date +%Y-%m-%d)"
 
 git log --reverse --format='%H%x1f%P%x1f%s%x1f%b%x1e' "$commit_range" |
-  awk -v server="$server" -v repo="$repository" -v from="$from" -v to="$to" '
+  awk -v server="$server" -v repo="$repository" -v from="$from" -v to="$to" \
+    -v commit_path="$commit_path" -v compare_path="$compare_path" -v commits_path="$commits_path" '
     function section(title, entries, count, i) {
       if (count == 0) return
       print "## " title
@@ -98,7 +119,7 @@ git log --reverse --format='%H%x1f%P%x1f%s%x1f%b%x1e' "$commit_range" |
       if (hash == "") next
       if (split(parents, parent_hashes, " ") > 1) next
 
-      commit_url = server "/" repo "/commit/" hash
+      commit_url = server "/" repo commit_path hash
       link = "- " subject " ([" substr(hash, 1, 7) "](" commit_url "))"
       conventional = (subject ~ /^[A-Za-z]+(\([^)]*\))?!?:/)
       if (!conventional) next
@@ -131,10 +152,10 @@ git log --reverse --format='%H%x1f%P%x1f%s%x1f%b%x1e' "$commit_range" |
 
       print "## 完整变更"
       if (from != "") {
-        compare_url = server "/" repo "/compare/" from "..." to
+        compare_url = server "/" repo compare_path from "..." to
         print "- [" from "..." to "](" compare_url ")"
       } else {
-        print "- [初始版本 " to "](" server "/" repo "/commits/" to ")"
+        print "- [初始版本 " to "](" server "/" repo commits_path to ")"
       }
     }
   '
