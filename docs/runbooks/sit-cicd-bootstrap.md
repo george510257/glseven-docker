@@ -22,7 +22,7 @@ docker inspect -f '{{.State.Health.Status}}' gitlab    # 期望 healthy（首次
 docker exec gitlab cat /etc/gitlab/initial_root_password
 ```
 
-登录 `http://gitlab.glseven.local:8929`（用户名 `root`）后立即修改密码；该文件 24 小时后自动删除。
+登录 `http://gitlab.glseven.local:8080`（用户名 `root`）后立即修改密码；该文件 24 小时后自动删除。
 
 ### 1.3 注册 GitLab Runner
 
@@ -31,7 +31,7 @@ docker exec gitlab cat /etc/gitlab/initial_root_password
 
 ```bash
 docker exec gitlab-runner gitlab-runner register \
-  --non-interactive --url http://gitlab:8929 --token <glrt-...> \
+  --non-interactive --url http://gitlab:8080 --token <glrt-...> \
   --executor docker --docker-image docker:29.10.0-cli --tag-list sit
 ```
 
@@ -41,7 +41,7 @@ docker exec gitlab-runner gitlab-runner register \
 concurrent = 1
 
 [[runners]]
-  url = "http://gitlab:8929"
+  url = "http://gitlab:8080"
   executor = "docker"
   [runners.docker]
     image = "docker:29.10.0-cli"
@@ -58,12 +58,14 @@ concurrent = 1
 
 4. 重启并验证：
 
+> 从旧版本升级：`config.toml` 位于数据目录、不在仓库中，`url` 需手动改为 `http://gitlab:8080`，再执行 `docker restart gitlab-runner`；已有项目的 HTTP remote 也需同步改到 8080。
+
 ```bash
 docker restart gitlab-runner
 docker exec gitlab-runner gitlab-runner list
 docker run --rm --network glseven --add-host gitlab.glseven.local:172.18.7.1 \
   curlimages/curl:8.23.0 -sS -o /dev/null -w '%{http_code}\n' \
-  http://gitlab.glseven.local:8929/-/readiness    # 期望 200
+  http://gitlab.glseven.local:8080/-/readiness    # 期望 200
 ```
 
 说明：`extra_hosts` 让作业容器解析 GitLab 外部域名（`CI_REPOSITORY_URL` 依赖它）；三个 volume 必须按宿主原路径挂载，否则 compose 的相对路径挂载会失效并触发全量重建。
@@ -91,7 +93,7 @@ docker pull 192.168.31.100:5000/docker-hosted/<测试镜像>   # 验证（需先
 2. 推送全部分支与 tag：
 
 ```bash
-git remote add gitlab ssh://git@gitlab.glseven.local:2224/glseven/glseven-docker.git
+git remote add gitlab ssh://git@gitlab.glseven.local:2222/glseven/glseven-docker.git
 git push gitlab --all
 git push gitlab --tags
 ```
@@ -148,13 +150,13 @@ sudo tar -czf /vol1/backup/gitlab-config-$(date +%F).tar.gz \
 
 | 现象 | 处理 |
 |---|---|
-| 作业 checkout 失败 / `Could not resolve host: gitlab.glseven.local` | 检查 runner `config.toml` 的 `extra_hosts`；用 `docker run --rm --network glseven --add-host gitlab.glseven.local:172.18.7.1 curlimages/curl:8.23.0 -sS -o /dev/null -w '%{http_code}\n' http://gitlab.glseven.local:8929/-/readiness` 验证（期望 200） |
+| 作业 checkout 失败 / `Could not resolve host: gitlab.glseven.local` | 检查 runner `config.toml` 的 `extra_hosts`；用 `docker run --rm --network glseven --add-host gitlab.glseven.local:172.18.7.1 curlimages/curl:8.23.0 -sS -o /dev/null -w '%{http_code}\n' http://gitlab.glseven.local:8080/-/readiness` 验证（期望 200） |
 | 部署后容器挂载为空或全量重建 | 检查 runner volume 是否按宿主原路径挂载（不得挂到 `/deploy`） |
 | `dubious ownership` | 部署脚本会 `chown -R 1000:1000 /vol1/1000/glseven-docker`；手工操作前确认属主 |
 | smoke 报 unhealthy | `docker ps`、`docker logs <容器>`；先修服务再重跑 `deploy:sit` |
 | GitLab 502（本机 local） | 预期行为：devops 仅 sit 启动 |
 | 内存吃紧 / swap 增长 | 降 JVM 堆、调低 fnOS 自带 ES 堆或加内存；保持 runner 并发 1 |
-| Runner offline | `docker logs gitlab-runner`，确认 token、`url = http://gitlab:8929` 与网络 `glseven` |
+| Runner offline | `docker logs gitlab-runner`，确认 token、`url = http://gitlab:8080` 与网络 `glseven` |
 
 ## 5. 迁移切换清单
 
