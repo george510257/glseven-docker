@@ -65,6 +65,9 @@ services:
     hostname: filebeat
     restart: always
     user: root          # 读 /var/lib/docker/containers 与 docker.sock 需要 root
+    # 部署脚本会把仓库属主 chown 到 1000:1000，而容器以 root 运行；Filebeat 9 默认拒绝加载
+    # 非 root 所有的配置文件（strict.perms）。关闭该检查以匹配仓库属主模型（配置仍只读挂载）。
+    command: [ "filebeat", "-e", "--strict.perms=false" ]
     env_file:
       - ../common/env/common.env
     volumes:
@@ -83,7 +86,7 @@ services:
       # test output 会实际连接 output.logstash（elk:5044）并做握手探测——
       # 这才是本容器「健康」的实际含义；test config 只校验 YAML 语法，
       # 配置正确但连不上 logstash 时会假报 healthy（2026-09-22 修正）。
-      test: [ "CMD", "filebeat", "test", "output" ]
+      test: [ "CMD", "filebeat", "test", "output", "--strict.perms=false" ]
       interval: 30s
       timeout: 10s
       retries: 3
