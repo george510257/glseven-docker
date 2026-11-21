@@ -62,7 +62,10 @@ stop_all() {
 }
 
 echo "Stopping services..."
-stop_all "${COMPOSE_FILES_BASE[@]}" "${COMPOSE_FILES_DEFERRED[@]}" "${COMPOSE_FILES_PORTAL[@]}"
+groups=("${COMPOSE_FILES_BASE[@]}" "${COMPOSE_FILES_DEFERRED[@]}")
+profile_includes_devops && groups+=("${COMPOSE_FILES_DEVOPS[@]}")
+groups+=("${COMPOSE_FILES_PORTAL[@]}")
+stop_all "${groups[@]}"
 
 # 移除网络（幂等，不存在则跳过）
 if docker network inspect glseven &>/dev/null; then

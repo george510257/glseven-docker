@@ -8,7 +8,14 @@
 
 COMPOSE_FILES_BASE=(infra observability)
 COMPOSE_FILES_DEFERRED=(security platform apps)
+# DEVOPS：sit 专用的 CI/CD 平台（GitLab + Runner），在 DEFERRED 之后、PORTAL 之前启动；
+# local 档案不启动（GitLab 重，本机无需）。
+COMPOSE_FILES_DEVOPS=(devops)
 COMPOSE_FILES_PORTAL=(portal)
+
+profile_includes_devops() {
+  [ "${PROFILE:-}" = "sit" ]
+}
 
 # Apple Silicon 的 amd64 ELK 无法在 Rosetta 模拟层提供 seccomp；只启动可用的监控服务。
 COMPOSE_SERVICES_OBSERVABILITY_APPLE_SILICON=(prometheus grafana)

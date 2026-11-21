@@ -92,7 +92,7 @@ chown_dir() {
 # 创建必要的目录并设置权限（目录创建失败仍致命）
 # 表驱动：每条为 "<相对 DOCKER_VOLUME 的路径> <宿主属主 uid>"。新增非 root 容器时在此加一行即可，
 # 无需改下面的创建/授权/恢复 mode 三段逻辑（原先散在四处硬编码，易漏，2026-09-21 审查后收敛）。
-# 属主 uid 依据：nexus3=200、prometheus=65534(nobody)、grafana=472、elk/kafka=1000、phpldapadmin=82(www-data)。
+# 属主 uid 依据：nexus3=200、prometheus=65534(nobody)、grafana=472、elk/kafka=1000、phpldapadmin=82(www-data)、gitlab=998。
 # kafka 是 2026-09-21 修复「数据不落盘」时新增：设了 KAFKA_LOG_DIRS 后 compose 会预建
 # /var/lib/kafka/data 挂载点，属主不是 1000(appuser) 则 broker 起不来。
 DIR_SPECS=(
@@ -107,6 +107,11 @@ DIR_SPECS=(
   "phpldapadmin 82"
   "phpldapadmin/sessions 82"
   "phpldapadmin/logs 82"
+  "gitlab/config 0"
+  "gitlab/logs 998"
+  "gitlab/data 998"
+  "gitlab-runner/config 0"
+  "gitlab-runner/cache 0"
 )
 
 echo "Creating directories..."
@@ -162,6 +167,17 @@ for group in "${COMPOSE_FILES_DEFERRED[@]}"; do
   start_compose_group "$group" || { echo "Error: ${group} services failed to start"; exit 1; }
   echo "✓ ${group} services started"
 done
+
+# 启动 sit 专用的 CI/CD 平台（GitLab + Runner）
+if profile_includes_devops; then
+  echo "Starting devops services..."
+  for group in "${COMPOSE_FILES_DEVOPS[@]}"; do
+    start_compose_group "$group" || { echo "Error: ${group} services failed to start"; exit 1; }
+    echo "✓ ${group} services started"
+  done
+else
+  echo "Skipping devops services (profile: $PROFILE)"
+fi
 
 # 启动导航门户（最后一批）
 echo "Starting portal..."
