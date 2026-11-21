@@ -7,7 +7,8 @@ out="$(TARGET_SHA=abc123 CI_REPOSITORY_URL="http://gitlab-ci-token:x@gitlab:8929
   DRY_RUN=1 bash "$ROOT/ci/deploy-sit.sh")"
 
 for expected in \
-  "git -C /vol1/1000/glseven-docker fetch" \
+  "safe.directory=/vol1/1000/glseven-docker" \
+  "fetch --prune" \
   "checkout -f abc123" \
   "chown -R 1000:1000 /vol1/1000/glseven-docker" \
   "startup.sh --profile sit" \

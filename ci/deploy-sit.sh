@@ -8,6 +8,9 @@ DEPLOY_UID="${DEPLOY_UID:-1000}"
 TARGET_SHA="${TARGET_SHA:-${CI_COMMIT_SHA:-}}"
 REPO_URL="${CI_REPOSITORY_URL:-}"
 DRY_RUN="${DRY_RUN:-0}"
+# root 在作业容器里对 admin 属主的宿主仓库会触发 git 的 dubious ownership，
+# 每条 git 命令显式信任部署目录。
+GIT_SAFE=(-c safe.directory="$DEPLOY_DIR")
 
 [[ -n "$TARGET_SHA" ]] || { echo "Error: TARGET_SHA (or CI_COMMIT_SHA) is required" >&2; exit 2; }
 
@@ -21,16 +24,16 @@ run() {
 
 if [[ "$DRY_RUN" != "1" ]]; then
   [[ -n "$REPO_URL" ]] || { echo "Error: CI_REPOSITORY_URL is required" >&2; exit 2; }
-  run git -C "$DEPLOY_DIR" fetch --prune "$REPO_URL" \
+  run git "${GIT_SAFE[@]}" -C "$DEPLOY_DIR" fetch --prune "$REPO_URL" \
     "+refs/heads/develop:refs/remotes/origin/develop" "+refs/tags/*:refs/tags/*"
-  git -C "$DEPLOY_DIR" cat-file -e "$TARGET_SHA^{commit}" ||
+  git "${GIT_SAFE[@]}" -C "$DEPLOY_DIR" cat-file -e "$TARGET_SHA^{commit}" ||
     { echo "Error: $TARGET_SHA is not reachable from develop or tags" >&2; exit 1; }
-  run git -C "$DEPLOY_DIR" checkout -f "$TARGET_SHA"
+  run git "${GIT_SAFE[@]}" -C "$DEPLOY_DIR" checkout -f "$TARGET_SHA"
   run chown -R "$DEPLOY_UID:$DEPLOY_UID" "$DEPLOY_DIR"
 else
-  run git -C "$DEPLOY_DIR" fetch --prune "$REPO_URL" \
+  run git "${GIT_SAFE[@]}" -C "$DEPLOY_DIR" fetch --prune "$REPO_URL" \
     "+refs/heads/develop:refs/remotes/origin/develop" "+refs/tags/*:refs/tags/*"
-  run git -C "$DEPLOY_DIR" checkout -f "$TARGET_SHA"
+  run git "${GIT_SAFE[@]}" -C "$DEPLOY_DIR" checkout -f "$TARGET_SHA"
   run chown -R "$DEPLOY_UID:$DEPLOY_UID" "$DEPLOY_DIR"
 fi
 

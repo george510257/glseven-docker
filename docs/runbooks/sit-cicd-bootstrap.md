@@ -61,7 +61,9 @@ concurrent = 1
 ```bash
 docker restart gitlab-runner
 docker exec gitlab-runner gitlab-runner list
-docker exec gitlab-runner getent hosts gitlab.glseven.local   # 期望 172.18.7.1
+docker run --rm --network glseven --add-host gitlab.glseven.local:172.18.7.1 \
+  curlimages/curl:8.23.0 -sS -o /dev/null -w '%{http_code}\n' \
+  http://gitlab.glseven.local:8929/-/readiness    # 期望 200
 ```
 
 说明：`extra_hosts` 让作业容器解析 GitLab 外部域名（`CI_REPOSITORY_URL` 依赖它）；三个 volume 必须按宿主原路径挂载，否则 compose 的相对路径挂载会失效并触发全量重建。
@@ -119,7 +121,15 @@ git -C /vol1/1000/glseven-docker cat-file -t <version>   # 期望 tag
 
 ## 2. 日常运维
 
-- **部署**：push `develop` 自动执行 `deploy:sit`；改动 `docker-compose-devops.yml` 时该作业被跳过（`when: never`），必须宿主手工 `sudo bash startup.sh --profile sit`——CI 部署会重启 GitLab 本体并中断作业。
+- **部署**：push `develop` 自动执行 `deploy:sit`；改动 `docker-compose-devops.yml` 时该作业被跳过（`when: never`），必须宿主手工执行（CI 部署会重启 GitLab 本体并中断作业）：
+
+  ```bash
+  cd /vol1/1000/glseven-docker
+  git fetch origin
+  git checkout -f develop
+  git reset --hard origin/develop
+  sudo bash startup.sh --profile sit
+  ```
 - **回滚**：GitLab web → Run pipeline（分支选 `develop`）→ 手动运行 `deploy:sit:rollback`，变量 `ROLLBACK_SHA` 填目标提交（必须在 develop 历史或 tag 中可达）。
 - **发布**：push `main` 触发 `release`，需要项目访问令牌 `RELEASE_TOKEN`（`api` + `write_repository`，masked 变量）。
 - **内存**：`docker stats --no-stream`、`free -h`；GitLab 常驻目标 ≤ 3.5 GiB，构建并发固定为 1。紧张时先减 JVM 堆，再考虑调低 fnOS 自带 ES 堆或加内存。
@@ -138,7 +148,7 @@ sudo tar -czf /vol1/backup/gitlab-config-$(date +%F).tar.gz \
 
 | 现象 | 处理 |
 |---|---|
-| 作业 checkout 失败 / `Could not resolve host: gitlab.glseven.local` | 检查 runner `config.toml` 的 `extra_hosts` 与 `docker exec gitlab-runner getent hosts gitlab.glseven.local` |
+| 作业 checkout 失败 / `Could not resolve host: gitlab.glseven.local` | 检查 runner `config.toml` 的 `extra_hosts`；用 `docker run --rm --network glseven --add-host gitlab.glseven.local:172.18.7.1 curlimages/curl:8.23.0 -sS -o /dev/null -w '%{http_code}\n' http://gitlab.glseven.local:8929/-/readiness` 验证（期望 200） |
 | 部署后容器挂载为空或全量重建 | 检查 runner volume 是否按宿主原路径挂载（不得挂到 `/deploy`） |
 | `dubious ownership` | 部署脚本会 `chown -R 1000:1000 /vol1/1000/glseven-docker`；手工操作前确认属主 |
 | smoke 报 unhealthy | `docker ps`、`docker logs <容器>`；先修服务再重跑 `deploy:sit` |
