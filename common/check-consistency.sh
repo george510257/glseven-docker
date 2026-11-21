@@ -42,7 +42,7 @@ PORTAL_SUBDOMAIN="portal"
 # 内部服务：只在容器网络内提供服务，宿主侧完全不暴露（nginx 里有意不出现），
 # 因此三类检查一并豁免。与 PROTOCOL_ONLY 的区别：后者有 stream 转发到宿主，本类没有。
 # filebeat=日志生产者，无用户界面；keycloak 的 9000 管理端口同理（见 README「仅容器网络内」）。
-INTERNAL_ONLY="filebeat"
+INTERNAL_ONLY="filebeat gitlab-runner"
 
 is_in() { local n="$1" list="$2"; [[ " $list " == *" $n "* ]]; }
 

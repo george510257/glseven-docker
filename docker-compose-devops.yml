@@ -1,0 +1,57 @@
+name: devops
+
+networks:
+  glseven:
+    external: true
+
+services:
+
+  # Devops 172.18.7.x =====================================================================================
+
+  gitlab:
+    # 平台域：GitLab CE，仅 sit 档案启动（common/compose-list.sh 门控）。
+    # external_url 带端口：容器内 nginx 监听 8929，经 portal 暴露为 gitlab.glseven.local:8929。
+    # 裁剪项：关闭自带 registry（制品统一走 Nexus）、Prometheus、KAS、Pages；Puma/Sidekiq 减配。
+    image: gitlab/gitlab-ce:19.6.1-ce.0
+    container_name: gitlab
+    hostname: gitlab
+    restart: always
+    shm_size: 256m
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab.glseven.local:8929'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2224
+        gitlab_rails['time_zone'] = 'Asia/Shanghai'
+        puma['worker_processes'] = 2
+        sidekiq['concurrency'] = 5
+        prometheus_monitoring['enable'] = false
+        registry['enable'] = false
+        gitlab_kas['enable'] = false
+        gitlab_pages['enable'] = false
+    volumes:
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/gitlab/config:/etc/gitlab
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/gitlab/logs:/var/log/gitlab
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/gitlab/data:/var/opt/gitlab
+    networks:
+      glseven:
+        ipv4_address: 172.18.7.1
+    healthcheck:
+      # 官方镜像自带 curl；/-/readiness 就绪返回 200，首次 reconfigure 较慢。
+      test: ["CMD", "curl", "-f", "http://localhost:8929/-/readiness"]
+      interval: 30s
+      timeout: 10s
+      retries: 20
+      start_period: 300s
+
+  gitlab-runner:
+    # 只跑 docker executor 作业；注册与 config.toml 由 bootstrap 手工完成（见 runbook）。
+    image: gitlab/gitlab-runner:v19.6.0
+    container_name: gitlab-runner
+    hostname: gitlab-runner
+    restart: always
+    volumes:
+      - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/gitlab-runner/config:/etc/gitlab-runner
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      glseven:
+        ipv4_address: 172.18.7.2
