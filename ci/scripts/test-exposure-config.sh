@@ -26,4 +26,8 @@ for key in GRAFANA_ADMIN_PASSWORD APISIX_ADMIN_KEY XXL_JOB_ACCESS_TOKEN KEYCLOAK
   grep -q "$key" "$ROOT/common/preflight.sh" || fail "preflight 未校验 $key"
 done
 
+! grep -q '^KC_BOOTSTRAP_ADMIN_PASSWORD=' "$ROOT/security/env/keycloak.env" || fail "keycloak.env 不应重复定义 bootstrap 口令"
+! grep -Fq 'Hint: cp ${PROFILE_FILE}.example' "$ROOT/common/preflight.sh" || fail "preflight 缺键提示不得建议覆盖 profile"
+grep -q 'append .*PROFILE_FILE' "$ROOT/common/preflight.sh" || fail "preflight 应提示追加缺失键"
+
 printf 'exposure config tests: OK\n'

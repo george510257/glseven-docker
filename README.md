@@ -113,7 +113,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 ### Keycloak 26.7.3
 
 - `start-dev` 官方开发模式（免 TLS/hostname 配置），数据全部在 MySQL `keycloak` 库（容器无状态不挂数据卷）。
-- bootstrap admin 凭据见 `security/env/keycloak.env`（仅首次启动生效；WARNING：生产前必须修改）。
+- bootstrap admin 用户名见 `security/env/keycloak.env`；口令见 profile 的 `KEYCLOAK_ADMIN_PASSWORD`（仅首次空库初始化生效）。
 - 健康与指标端口 9000 由 `KC_HEALTH_ENABLED` + `KC_METRICS_ENABLED` 开启（仅容器网络内，供探针与 Prometheus 抓取）。
 
 ### APISIX 3.18.0
@@ -224,6 +224,14 @@ flush privileges;
 4. **Kafka**（可选）：稳定后执行 `docker exec kafka /opt/kafka/bin/kafka-features.sh --bootstrap-server localhost:9092 upgrade --release-version 4.3` 固化元数据版本；不固化保持兼容模式（可回滚），固化后不可降级。
 5. **下线与维持**：libretv 已下线（上游停更，MoonTV 保留）；mongo-express 与 openldap 维持旧版（上游无稳定新版），属技术债。
 6. **XXL-JOB context-path**：本地保留 `/xxl-job-admin` 前缀（application.properties 自定义），执行器侧 `xxl.job.admin.addresses` 需保持带此前缀。
+
+## 批次 3 升级清单（2026-11-22）
+
+- **profile 追加五个键**（不要覆盖现有文件）：`PORT_BIND_IP`、`GRAFANA_ADMIN_PASSWORD`、`APISIX_ADMIN_KEY`、`XXL_JOB_ACCESS_TOKEN`、`KEYCLOAK_ADMIN_PASSWORD`；sit 宿主需同步补 `.env.sit`，否则 `deploy:sit` 会在 preflight 失败。
+- **filebeat 需要重建**才能加载新的 monitoring 配置：
+  `docker compose --env-file .env.sit -f observability/docker-compose.yml up -d --force-recreate filebeat`
+- **Grafana 管理员口令仅首次初始化生效**：存量实例用 `docker exec grafana grafana cli admin reset-admin-password <new-password>` 重置。
+- **Keycloak bootstrap 口令仅首次空库初始化生效**；存量库不受影响。
 
 ## 已知平台限制（宿主环境，非编排缺陷）
 

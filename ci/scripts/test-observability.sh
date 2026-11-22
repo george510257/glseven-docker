@@ -12,4 +12,7 @@ DASH="$ROOT/observability/grafana/conf/dashboards/glseven-targets.json"
 grep -Fq '"prometheus"' "$DASH" || fail "面板未引用 prometheus 数据源"
 grep -Fq '"up"' "$DASH" || fail "面板缺少 up 查询"
 
+grep -Fq 'force-recreate filebeat' "$ROOT/README.md" || fail "README 缺少 filebeat 重建升级步骤"
+grep -Fq 'reset-admin-password' "$ROOT/README.md" || fail "README 缺少 Grafana 口令重置说明"
+
 printf 'observability tests: OK\n'

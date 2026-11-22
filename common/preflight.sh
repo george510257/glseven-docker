@@ -75,14 +75,14 @@ ensure_profile_file() {
   fi
   if [ ! -f "$PROFILE_FILE" ]; then
     echo "Error: profile file not found: $PROFILE_FILE" >&2
-    echo "Hint: cp ${PROFILE_FILE}.example ${PROFILE_FILE}" >&2
+    echo "Hint: create $PROFILE_FILE from ${PROFILE_FILE}.example" >&2
     exit 1
   fi
   local key
   for key in DOCKER_VOLUME REDIS_PASSWORD PORT_BIND_IP GRAFANA_ADMIN_PASSWORD APISIX_ADMIN_KEY XXL_JOB_ACCESS_TOKEN KEYCLOAK_ADMIN_PASSWORD; do
     if ! grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=[^[:space:]]" "$PROFILE_FILE"; then
       echo "Error: $key is missing or empty in $PROFILE_FILE" >&2
-      echo "Hint: cp ${PROFILE_FILE}.example ${PROFILE_FILE}" >&2
+      echo "Hint: append ${key}=<value> to $PROFILE_FILE (see ${PROFILE_FILE}.example); do not overwrite an existing profile" >&2
       exit 1
     fi
   done
