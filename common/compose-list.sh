@@ -23,3 +23,14 @@ COMPOSE_SERVICES_OBSERVABILITY_APPLE_SILICON=(prometheus grafana)
 is_apple_silicon() {
   [[ "${1:-}" == "Darwin" && "${2:-}" == "arm64" ]]
 }
+
+# 关闭顺序：BASE + DEFERRED + DEVOPS + PORTAL。DEVOPS 无条件加入：
+# 从 sit 切到 local 后仍可能残留 GitLab/Runner，跳过会占住 glseven 网络。
+build_shutdown_groups() {
+  SHUTDOWN_GROUPS=(
+    "${COMPOSE_FILES_BASE[@]}"
+    "${COMPOSE_FILES_DEFERRED[@]}"
+    "${COMPOSE_FILES_DEVOPS[@]}"
+    "${COMPOSE_FILES_PORTAL[@]}"
+  )
+}

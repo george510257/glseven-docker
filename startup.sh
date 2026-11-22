@@ -111,7 +111,6 @@ DIR_SPECS=(
   "gitlab/logs 998"
   "gitlab/data 998"
   "gitlab-runner/config 0"
-  "gitlab-runner/cache 0"
   "gitlab-runner/home 0"
 )
 
@@ -178,6 +177,11 @@ if profile_includes_devops; then
   done
 else
   echo "Skipping devops services (profile: $PROFILE)"
+  if [ -n "$(compose -f devops/docker-compose.yml ps -aq 2>/dev/null)" ]; then
+    echo "Stopping devops services left over from another profile..."
+    compose -f devops/docker-compose.yml down -t 60 --remove-orphans ||
+      echo "WARN: failed to stop devops services, continuing..."
+  fi
 fi
 
 # 启动导航门户（最后一批）

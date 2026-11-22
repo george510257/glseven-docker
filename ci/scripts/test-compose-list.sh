@@ -14,8 +14,18 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 ( unset PROFILE; profile_includes_devops ) && fail "PROFILE 未设置不得包含 devops"
 
 grep -q 'profile_includes_devops' "$ROOT/startup.sh" || fail "startup.sh 未使用门控函数"
-grep -q 'profile_includes_devops' "$ROOT/shutdown.sh" || fail "shutdown.sh 未使用门控函数"
-for dir in gitlab/config gitlab/logs gitlab/data gitlab-runner/config gitlab-runner/cache gitlab-runner/home; do
+
+build_shutdown_groups
+[ "${SHUTDOWN_GROUPS[*]}" = "infra observability security platform apps devops portal" ] ||
+  fail "shutdown 顺序必须无条件包含 devops"
+grep -q -- '--remove-orphans' "$ROOT/shutdown.sh" ||
+  fail "shutdown.sh 必须清理孤儿容器"
+grep -q 'ps -aq' "$ROOT/startup.sh" ||
+  fail "startup.sh 必须检测并停止残留 devops"
+! grep -q 'gitlab-runner/cache' "$ROOT/startup.sh" ||
+  fail "startup.sh 不应创建未挂载的 gitlab-runner/cache"
+
+for dir in gitlab/config gitlab/logs gitlab/data gitlab-runner/config gitlab-runner/home; do
   grep -q "\"$dir " "$ROOT/startup.sh" || fail "DIR_SPECS 缺少 $dir"
 done
 

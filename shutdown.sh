@@ -49,7 +49,8 @@ compose() {
   docker compose --env-file "$PROFILE_FILE" "$@"
 }
 
-# 按启动顺序（BASE + DEFERRED + PORTAL 拼接）的逆序停止所有服务
+# 关闭顺序：BASE + DEFERRED + DEVOPS + PORTAL 的逆序。DEVOPS 无条件加入，
+# 避免档案从 sit 切到 local 后 GitLab/Runner 残留。
 stop_all() {
   local -a groups=("$@")
   local i group
@@ -57,24 +58,35 @@ stop_all() {
     group=${groups[$i]}
     # -t 60：默认 10s 对 kafka/elk/mysql 偏短，强制 kill 易留脏存储。
     # 不用 stop 替代 down：容器留着会占住 glseven 网络，致随后的 network rm 失败。
-    compose -f "${group}/docker-compose.yml" down -t 60 2>/dev/null && echo "✓ ${group} services stopped" || echo "- ${group} not running"
+    compose -f "${group}/docker-compose.yml" down -t 60 --remove-orphans 2>/dev/null && echo "✓ ${group} services stopped" || echo "- ${group} not running"
   done
 }
 
 echo "Stopping services..."
-groups=("${COMPOSE_FILES_BASE[@]}" "${COMPOSE_FILES_DEFERRED[@]}")
-profile_includes_devops && groups+=("${COMPOSE_FILES_DEVOPS[@]}")
-groups+=("${COMPOSE_FILES_PORTAL[@]}")
-stop_all "${groups[@]}"
+build_shutdown_groups
+stop_all "${SHUTDOWN_GROUPS[@]}"
 
-# 移除网络（幂等，不存在则跳过）
+# 移除网络（幂等）。glseven 是共享网络：其他 project 仍在使用时保留并提示，
+# 不能把「删不掉」误报成「全部停止」。
+network_removed=false
 if docker network inspect glseven &>/dev/null; then
   echo "Removing Docker network glseven..."
-  docker network rm glseven && echo "✓ Network glseven removed"
+  if docker network rm glseven; then
+    network_removed=true
+    echo "✓ Network glseven removed"
+  else
+    occupants="$(docker network inspect glseven --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null)"
+    echo "WARN: network glseven is still in use (${occupants:-unknown}); leaving it in place."
+  fi
 else
   echo "Network glseven not found, skipping."
+  network_removed=true
 fi
 
 echo "==========================================="
-echo "所有服务已停止！"
+if $network_removed; then
+  echo "所有服务已停止，网络 glseven 已移除"
+else
+  echo "所有编排容器已停止；网络 glseven 保留（被其他 project 占用）"
+fi
 echo "==========================================="
