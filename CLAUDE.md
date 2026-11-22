@@ -38,7 +38,7 @@ bash common/check-consistency.sh --strict
 git diff --check
 ```
 
-`test-*.sh` 只需要 bash 与 git（发布脚本测试会在临时 git 仓库里造提交），无 Docker 也能跑；`compose config` 需要 Docker CLI 和当前档案（如 `.env.local`）。四个脚本都必须保持 macOS 自带 Bash 3.2 兼容。
+`test-*.sh` 只需要 bash 与 git（发布脚本测试会在临时 git 仓库里造提交），无 Docker 也能跑；`compose config` 需要 Docker CLI 和当前档案（如 `.env.local`）。所有 `test-*.sh` 都必须保持 macOS 自带 Bash 3.2 兼容。
 
 运行时验证：
 

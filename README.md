@@ -1,6 +1,6 @@
 # glseven-docker
 
-面向开发环境的微服务基础设施 Docker Compose 编排：6 个职能域、25 个服务，统一运行在外部网络 `glseven`（172.18.0.0/16），一键起停、固定 IP、数据落盘宿主目录。
+面向开发环境的微服务基础设施 Docker Compose 编排：7 个职能域、27 个容器（nginx 门户 + 26 个后端服务），统一运行在外部网络 `glseven`（172.18.0.0/16），一键起停、固定 IP、数据落盘宿主目录。
 
 ## 快速开始
 
@@ -11,7 +11,7 @@
 cp .env.local.example .env.local
 # sit：cp .env.sit.example .env.sit，并按机器修改 DOCKER_VOLUME / KAFKA_EXTERNAL_HOST
 
-# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 24 个主机名（服务二级域名 = 容器名，门户为 portal，零别名）
+# 2. 首次初始化（一次性，需 sudo）：/etc/hosts 追加 25 个主机名（服务二级域名 = 容器名，门户为 portal，零别名）
 echo '127.0.0.1 portal.glseven.local gitlab.glseven.local mysql.glseven.local redis.glseven.local mongo.glseven.local mongo-express.glseven.local adminer.glseven.local rabbitmq.glseven.local kafka.glseven.local etcd.glseven.local prometheus.glseven.local grafana.glseven.local elk.glseven.local openldap.glseven.local php-ldap-admin.glseven.local keycloak.glseven.local nacos.glseven.local xxl-job-admin.glseven.local nexus3.glseven.local portainer.glseven.local apisix.glseven.local ollama.glseven.local open-webui.glseven.local moontv.glseven.local iptv.glseven.local' | sudo tee -a /etc/hosts
 
 # 3. 启动：--profile 选择档案；首次必须显式指定，之后可省略（沿用 .glseven-profile）
@@ -29,11 +29,11 @@ bash shutdown.sh
 
 存量环境升级时，需在 `/etc/hosts` 追加 `127.0.0.1 portal.glseven.local`。根域条目可以保留，`glseven.local:8000` 会自动 301 到新入口。
 
-数据目录优先级为：显式数据目录参数 > 已导出的 `DOCKER_VOLUME` > 当前档案的 `DOCKER_VOLUME` > 平台默认值。平台默认值在 Linux 为 `/docker/glseven`，在 macOS 为 `$HOME/docker/glseven`（macOS 根卷只读，不能使用 `/docker`）。也可显式指定：`bash startup.sh --profile local /data/glseven`。Linux 上需 root/sudo 执行（脚本将 nexus3/prometheus/grafana/elk 数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
+数据目录优先级为：显式数据目录参数 > 已导出的 `DOCKER_VOLUME` > 当前档案的 `DOCKER_VOLUME` > 平台默认值。平台默认值在 Linux 为 `/docker/glseven`，在 macOS 为 `$HOME/docker/glseven`（macOS 根卷只读，不能使用 `/docker`）。也可显式指定：`bash startup.sh --profile local /data/glseven`。Linux 上需 root/sudo 执行（脚本按 DIR_SPECS 将数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
 
 修改当前档案的 `REDIS_PASSWORD` 后需同时重建 redis 与 moontv：重新执行 `bash startup.sh`（沿用上次档案）即可。
 
-## 六域结构与启动时序
+## 七域结构与启动时序
 
 | 域（包） | 服务（容器内固定 IP 末位） | IP 段 | 启动批次 |
 |---|---|---|---|
@@ -42,6 +42,7 @@ bash shutdown.sh
 | security | openldap .1、php-ldap-admin .2、keycloak .3 | 172.18.3.x | DEFERRED |
 | platform | nacos .1、xxl-job-admin .2、nexus3 .3、portainer .4、apisix .5 | 172.18.4.x | DEFERRED |
 | apps | ollama .1、open-webui .2、moontv .3、iptv .4 | 172.18.5.x | DEFERRED |
+| devops | gitlab .1、gitlab-runner .2 | 172.18.7.x | DEVOPS（仅 sit） |
 | portal | nginx .1 | 172.18.6.x | PORTAL |
 
 每个域一个目录：compose 为 `<域>/docker-compose.yml`，该域服务 env 在 `<域>/env/`，配置目录与 compose 同包。
@@ -54,7 +55,7 @@ bash shutdown.sh
 - **PORTAL**：最后启动导航门户（保证导航目标先就绪）。
 - 跨 compose project 的依赖不写 `depends_on`（Docker 不支持跨文件引用），由批次时序 + `restart: always` 兜底。
 
-> **命令迁移**：旧命令 `docker compose -f docker-compose-<域>.yml ...` 已改为 `docker compose --env-file .env -f <域>/docker-compose.yml ...`；`--env-file` 必须带，否则根 `.env` 中的 `REDIS_PASSWORD` 不会被读取。
+> **命令迁移**：旧命令 `docker compose -f docker-compose-<域>.yml ...` 已改为 `docker compose --env-file .env.local -f <域>/docker-compose.yml ...`；`--env-file` 必须带，否则档案文件中的 `REDIS_PASSWORD` 不会被读取。
 
 ## 服务访问入口
 
@@ -63,7 +64,7 @@ bash shutdown.sh
 | 服务 | 入口 | 说明 |
 |---|---|---|
 | 导航门户 | http://portal.glseven.local:8000 | 全部入口聚合（nginx 静态页） |
-| Adminer | http://adminer.glseven.local:8080 | MySQL/Mongo 管理 |
+| Adminer | http://adminer.glseven.local:8080 | MySQL 管理 |
 | mongo-express | http://mongo-express.glseven.local:8081 | MongoDB 管理（凭据见 env） |
 | RabbitMQ 管理 | http://rabbitmq.glseven.local:15672 | AMQP/MQTT 走下方协议端口 |
 | phpLDAPadmin | http://php-ldap-admin.glseven.local:8080 | LDAP 管理（USER ID：`admin`；完整 DN `cn=admin,dc=glseven,dc=com` 等效） |
@@ -144,7 +145,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 - 首次访问控制台时按提示初始化管理员用户 `nacos` 的密码；之后客户端需带凭据连接。
 - 回滚：只把 `NACOS_AUTH_ENABLE` 设为 `false` 并重建 nacos；不要删除 token/identity。
 
-## 存量环境迁移（10 域 → 6 域，2026-09-08 重设计）
+## 存量环境迁移（10 域 → 6 域，2026-09-08 重设计；devops 为 2026-11 新增的第 7 域）
 
 IP 变化会使容器全量重建；数据卷按 `DOCKER_VOLUME` 子目录绑定不受影响。外部若有硬编码旧 IP，按下表更新：
 

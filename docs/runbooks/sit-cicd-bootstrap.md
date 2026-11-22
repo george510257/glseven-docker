@@ -121,7 +121,7 @@ git -C /vol1/1000/glseven-docker cat-file -t <version>   # 期望 tag
 
 ## 2. 日常运维
 
-- **部署**：push `develop` 自动执行 `deploy:sit`；改动 `docker-compose-devops.yml` 时该作业被跳过（`when: never`），必须宿主手工执行（CI 部署会重启 GitLab 本体并中断作业）：
+- **部署**：push `develop` 自动执行 `deploy:sit`；改动 `devops/docker-compose.yml` 时该作业被跳过（`when: never`），必须宿主手工执行（CI 部署会重启 GitLab 本体并中断作业）：
 
   ```bash
   cd /vol1/1000/glseven-docker
