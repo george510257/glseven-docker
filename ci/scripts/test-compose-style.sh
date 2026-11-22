@@ -5,7 +5,7 @@ BASE="$ROOT/common/base-service.yml"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 # Task 2-4 逐步追加已转换的域，保证每个中间提交都是绿的。
-DOMAINS=(infra observability security platform apps portal)
+DOMAINS=(infra observability security platform apps portal devops)
 
 check_base() {
   [ -f "$BASE" ] || fail "缺少 common/base-service.yml"

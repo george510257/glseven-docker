@@ -4,18 +4,25 @@ networks:
   glseven:
     external: true
 
+# devops 服务仅 sit 档案启动；不发布宿主端口，经 portal 代理。
+# 新增或改名服务需同步 5 处，见 common/check-consistency.sh 与 README。
+
+x-base: &base
+  file: ../common/base-service.yml
+  service: service-base
+
 services:
 
-  # Devops 172.18.7.x =====================================================================================
+# Devops 172.18.7.x ================================================================================
 
   gitlab:
     # 平台域：GitLab CE，仅 sit 档案启动（common/compose-list.sh 门控）。
     # external_url 带端口：容器内 nginx 监听 8929，经 portal 暴露为 gitlab.glseven.local:8929。
     # 裁剪项：关闭自带 registry（制品统一走 Nexus）、Prometheus、KAS、Pages；Puma/Sidekiq 减配。
+    extends: *base
     image: gitlab/gitlab-ce:19.6.1-ce.0
     container_name: gitlab
     hostname: gitlab
-    restart: always
     shm_size: 256m
     environment:
       GITLAB_OMNIBUS_CONFIG: |
@@ -47,10 +54,11 @@ services:
 
   gitlab-runner:
     # 只跑 docker executor 作业；注册与 config.toml 由 bootstrap 手工完成（见 runbook）。
+    # 无健康探针：runner 没有有意义的就绪命令。
+    extends: *base
     image: gitlab/gitlab-runner:v19.6.0
     container_name: gitlab-runner
     hostname: gitlab-runner
-    restart: always
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/gitlab-runner/config:/etc/gitlab-runner
       # 镜像声明了 VOLUME /home/gitlab-runner，不显式挂载会生成匿名卷（Portainer 里可见但不可管理）。
