@@ -14,13 +14,20 @@ for test_script in ci/scripts/test-*.sh; do
   bash "$test_script"
 done
 
-cp .env.local.example .env.local
+tmp_env="$(mktemp "${TMPDIR:-/tmp}/glseven-validate-env.XXXXXX")"
+trap 'rm -f "$tmp_env"' EXIT
+cp .env.local.example "$tmp_env"
+
+for path in .env.local .env.sit .glseven-profile .claude/settings.local.json; do
+  git check-ignore -q "$path" || { echo "Error: $path must be ignored" >&2; exit 1; }
+done
+
 shopt -s nullglob
 files=(*/docker-compose.yml)
 [[ ${#files[@]} -gt 0 ]]
 for file in "${files[@]}"; do
   echo "Validating $file"
-  docker compose --env-file .env.local -f "$file" config -q
+  docker compose --env-file "$tmp_env" -f "$file" config -q
 done
 
 bash common/check-consistency.sh --strict

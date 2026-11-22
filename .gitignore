@@ -29,5 +29,8 @@ data/
 .qoder/
 .omc/
 
+# Local Claude Code settings
+.claude/
+
 # Local-only portal vhosts
 portal/conf/conf.d/*.local.conf

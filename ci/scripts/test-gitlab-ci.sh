@@ -27,4 +27,15 @@ if ls "$ROOT"/.github/workflows/*.yml >/dev/null 2>&1; then
   done
 fi
 
+# ci/validate.sh 不得覆盖工作区 .env.local
+! grep -q 'cp \.env\.local\.example \.env\.local' "$ROOT/ci/validate.sh" ||
+  fail "ci/validate.sh 不得直接覆盖 .env.local"
+grep -q 'mktemp' "$ROOT/ci/validate.sh" ||
+  fail "ci/validate.sh 应使用 mktemp 生成临时 env 文件"
+grep -qE '^\.claude/?$' "$ROOT/.gitignore" ||
+  fail ".gitignore 必须包含 .claude/"
+for path in .env.local .env.sit .glseven-profile .claude/settings.local.json; do
+  git -C "$ROOT" check-ignore -q "$path" || fail "$path 必须被 gitignore"
+done
+
 printf 'gitlab-ci tests: OK\n'
