@@ -19,7 +19,7 @@ services:
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/mysql/data:/var/lib/mysql
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/mysql/conf.d:/etc/mysql/conf.d
-      - ./mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+      - ./mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
     networks:
       glseven:
         ipv4_address: 172.18.1.1
@@ -139,7 +139,7 @@ services:
       - env/rabbitmq.env
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/rabbitmq/data:/var/lib/rabbitmq
-      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
     networks:
       glseven:
         ipv4_address: 172.18.1.6
