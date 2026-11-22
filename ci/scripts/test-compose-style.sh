@@ -16,6 +16,13 @@ check_base() {
     fail "service-common 必须继承 service-base"
   grep -A2 '^  service-healthy:$' "$BASE" | grep -q 'extends: service-common' ||
     fail "service-healthy 必须继承 service-common"
+  grep -A2 '^  service-base:$' "$BASE" | grep -q 'restart: always' ||
+    fail "service-base 必须提供 restart: always"
+  grep -A4 '^  service-common:$' "$BASE" | grep -q 'env/common.env' ||
+    fail "service-common 必须提供 env/common.env"
+  for key in 'interval: 10s' 'timeout: 5s' 'retries: 10' 'start_period: 30s'; do
+    grep -q "^      $key$" "$BASE" || fail "service-healthy 缺少 $key"
+  done
 }
 
 check_header() {
@@ -34,6 +41,10 @@ check_services() {
     name="${ref#\*}"
     grep -q "^x-${name}: &${name}$" "$file" ||
       fail "$domain: 使用了未定义的锚点 $ref"
+    grep -A2 "^x-${name}: &${name}$" "$file" | grep -q 'file: ../common/base-service.yml' ||
+      fail "$domain: 锚点 $ref 未指向 common/base-service.yml"
+    grep -A2 "^x-${name}: &${name}$" "$file" | grep -q "service: service-${name}" ||
+      fail "$domain: 锚点 $ref 的 service 必须是 service-${name}"
   done
 
   while IFS= read -r line; do
