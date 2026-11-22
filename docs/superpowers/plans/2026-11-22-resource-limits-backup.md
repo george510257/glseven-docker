@@ -64,7 +64,7 @@ grep -Fq 'ES_JAVA_OPTS: "-Xms1g -Xmx1g"' "$ROOT/observability/docker-compose.yml
 grep -Fq 'LS_HEAP_SIZE: "512m"' "$ROOT/observability/docker-compose.yml" || fail "Logstash 堆上限缺失"
 ! grep -Fq 'LS_JAVA_OPTS' "$ROOT/observability/docker-compose.yml" || fail "elk 不应使用 LS_JAVA_OPTS"
 grep -Fq 'KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"' "$ROOT/infra/docker-compose.yml" || fail "Kafka 堆上限缺失"
-grep -Fq 'INSTALL4J_ADD_VM_PARAMS: "-Xms768m -Xmx768m -XX:MaxDirectMemorySize=768m"' "$ROOT/platform/docker-compose.yml" || fail "Nexus 堆上限缺失"
+grep -Fq 'INSTALL4J_ADD_VM_PARAMS: "-Xms768m -Xmx768m -XX:MaxDirectMemorySize=768m -Djava.util.prefs.userRoot=/nexus-data/javaprefs -Dfile.encoding=UTF-8"' "$ROOT/platform/docker-compose.yml" || fail "Nexus 堆上限或 prefs 参数缺失"
 grep -Fq -- '--maxmemory 256mb' "$ROOT/infra/docker-compose.yml" || fail "Redis maxmemory 缺失"
 grep -Fq -- '--maxmemory-policy allkeys-lru' "$ROOT/infra/docker-compose.yml" || fail "Redis 淘汰策略缺失"
 
@@ -90,7 +90,7 @@ Expected: FAIL，提示 ES 堆上限缺失。
 
 ```yaml
     environment:
-      INSTALL4J_ADD_VM_PARAMS: "-Xms768m -Xmx768m -XX:MaxDirectMemorySize=768m"
+      INSTALL4J_ADD_VM_PARAMS: "-Xms768m -Xmx768m -XX:MaxDirectMemorySize=768m -Djava.util.prefs.userRoot=/nexus-data/javaprefs -Dfile.encoding=UTF-8"
 ```
 
 - `infra/docker-compose.yml` 的 kafka 现有 `environment` 增加一行：
@@ -166,7 +166,7 @@ Expected: FAIL，提示 `backup.sh` 不存在或语法失败。
 
 - [ ] **Step 3: 实现 `backup.sh`**
 
-> 审查后修订（2026-11-22）：先写 `<timestamp>.partial`，写完 `MANIFEST.txt` 后再 `mv` 成正式目录；`prune_backups` 只统计「时间戳目录 + `MANIFEST.txt`」；profile 缺 `DOCKER_VOLUME` 时快速失败；dump 产物为空则失败。对齐 spec「失败目录不占保留名额」。
+> 审查后修订（2026-11-22）：先写 `<timestamp>.partial`，写完 `MANIFEST.txt` 后再 `mv` 成正式目录；`prune_backups` 只统计「时间戳目录 + `MANIFEST.txt`」；profile 缺 `DOCKER_VOLUME` 时快速失败；dump 产物为空则失败；解析 `DOCKER_VOLUME` 前 `cd "$SCRIPT_DIR"`。对齐 spec「失败目录不占保留名额」。
 
 创建根目录 `backup.sh`：
 

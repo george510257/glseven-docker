@@ -52,6 +52,8 @@ main() {
     esac
   done
 
+  cd "$SCRIPT_DIR" || exit 1
+
   # shellcheck source=common/profile.sh
   source "$SCRIPT_DIR/common/profile.sh"
   PROFILE="$profile"

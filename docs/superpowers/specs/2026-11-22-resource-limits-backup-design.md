@@ -37,7 +37,7 @@
 |---|---|
 | `observability` elk | `environment:` 增加 `ES_JAVA_OPTS=-Xms1g -Xmx1g`、`LS_HEAP_SIZE=512m`（sebp/elk 的 `start.sh` 用它改写 Logstash 的 jvm.options；`LS_JAVA_OPTS` 会被镜像 entrypoint 覆盖，不可用） |
 | `infra` kafka | `environment:` 增加 `KAFKA_HEAP_OPTS=-Xms512m -Xmx512m`（与现有 `KAFKA_ADVERTISED_LISTENERS` 并列） |
-| `platform` nexus3 | `environment:` 增加 `INSTALL4J_ADD_VM_PARAMS=-Xms768m -Xmx768m -XX:MaxDirectMemorySize=768m` |
+| `platform` nexus3 | `environment:` 增加 `INSTALL4J_ADD_VM_PARAMS=-Xms768m -Xmx768m -XX:MaxDirectMemorySize=768m -Djava.util.prefs.userRoot=/nexus-data/javaprefs -Dfile.encoding=UTF-8` |
 | `infra` redis | `command` 追加 `--maxmemory 256mb --maxmemory-policy allkeys-lru` |
 
 - 不设 `mem_limit`：JVM 堆与 Redis 上限已经封住主要增长源；硬限制在 6–8GB 宿主上容易误杀。
@@ -58,7 +58,7 @@ main "$@"
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi
 ```
 
-- 参数与档案：`--profile local|sit` 或沿用 `.glseven-profile`；复用 `common/profile.sh` 与 `common/docker-volume.sh`。
+- 参数与档案：`--profile local|sit` 或沿用 `.glseven-profile`；复用 `common/profile.sh` 与 `common/docker-volume.sh`；解析 `DOCKER_VOLUME` 前 `cd` 到仓库根，保持相对路径与 `startup.sh` 一致。
 - 输出目录：`${BACKUP_DIR:-$DOCKER_VOLUME/backup}/<YYYYmmdd-HHMMSS>/`；先写到 `<timestamp>.partial`，写完 `MANIFEST.txt` 后再 `mv` 成正式目录；`umask 077`，新建目录 `chmod 700`。profile 缺 `DOCKER_VOLUME` 时直接失败，不回退平台默认。
 - 内容：
   - `mysql.sql`：`docker exec mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --all-databases --single-transaction --routines --events'`。
@@ -69,7 +69,7 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi
 - 失败处理：任一 dump 失败或产物为空则整个备份失败并以非零退出；`.partial` 目录保留供排查，但不计入保留名额。
 - 恢复（README）：
   - MySQL：`docker exec -i mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD"' < mysql.sql`（建议在空库/新卷上恢复）。
-  - Mongo：`docker exec -i mongo sh -c 'mongorestore --archive --gzip --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' < mongo.archive.gz`。
+  - Mongo：`docker exec -i mongo sh -c 'mongorestore --archive --gzip --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' < mongo.archive.gz`（建议空库/新卷；已有库可加 `--drop`）。
   - GitLab config：停止 gitlab 后解压到 `$DOCKER_VOLUME/gitlab/`。
 
 ### C. 测试

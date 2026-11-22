@@ -58,7 +58,7 @@ services:
     container_name: nexus3
     hostname: nexus3
     environment:
-      INSTALL4J_ADD_VM_PARAMS: "-Xms768m -Xmx768m -XX:MaxDirectMemorySize=768m"
+      INSTALL4J_ADD_VM_PARAMS: "-Xms768m -Xmx768m -XX:MaxDirectMemorySize=768m -Djava.util.prefs.userRoot=/nexus-data/javaprefs -Dfile.encoding=UTF-8"
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/nexus3/data:/nexus-data
     networks:

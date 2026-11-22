@@ -37,4 +37,7 @@ done
 grep -Eq "(^|[^0-9])${server_count} 个 server 块" "$ROOT/portal/docker-compose.yml" ||
   fail "portal compose 的 server 块计数与实际 ${server_count} 不一致"
 
+grep -Fq -- '--drop' "$ROOT/README.md" || fail "README Mongo 恢复缺少 --drop 提示"
+grep -Fq '未导出' "$ROOT/README.md" || fail "README 恢复命令缺少 DOCKER_VOLUME 提示"
+
 printf 'doc consistency tests: OK\n'

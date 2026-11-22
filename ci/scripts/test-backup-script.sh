@@ -10,6 +10,8 @@ printf '%s\n' "$out" | grep -q 'Usage:' || fail "--help 缺少 Usage"
 # shellcheck source=../../backup.sh
 source "$ROOT/backup.sh"
 
+grep -Fq 'cd "$SCRIPT_DIR"' "$ROOT/backup.sh" || fail "backup.sh 应在解析 DOCKER_VOLUME 前 cd 到 SCRIPT_DIR"
+
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/glseven-backup-tests.XXXXXX")"
 trap 'rm -rf "$tmp"; rm -f "$ROOT/.env.backup-test-$$"' EXIT
 

@@ -246,8 +246,9 @@ BACKUP_DIR=/path KEEP_BACKUPS=14 bash backup.sh --profile sit   # 覆盖目录/�
 - 保留最近 7 份；成功后按目录名倒序裁剪。
 - 不备份 Nexus blob、Kafka/ELK 数据、Prometheus 指标；GitLab 仓库数据用 `docker exec gitlab gitlab-backup create`。
 - 恢复：
+  - 以下命令中的 `$DOCKER_VOLUME` 指当前档案里的实际路径；普通新 shell 未导出时，先 `source .env.sit`（或 `.env.local`）或手动替换。
   - MySQL：`docker exec -i mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD"' < mysql.sql`（建议空库/新卷）。
-  - Mongo：`docker exec -i mongo sh -c 'mongorestore --archive --gzip --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' < mongo.archive.gz`。
+  - Mongo：`docker exec -i mongo sh -c 'mongorestore --archive --gzip --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' < mongo.archive.gz`（建议空库/新卷；在已有库上恢复可加 `--drop`）。
   - GitLab config：停止 gitlab 后 `tar -xzf gitlab-config.tar.gz -C "$DOCKER_VOLUME/gitlab"`。
 
 ## 已知平台限制（宿主环境，非编排缺陷）
