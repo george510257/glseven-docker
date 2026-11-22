@@ -79,6 +79,8 @@ services:
     command: start-dev
     env_file:
       - env/keycloak.env
+    environment:
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-glseven_keycloak_2026}
     networks:
       glseven:
         ipv4_address: 172.18.3.3

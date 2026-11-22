@@ -79,7 +79,7 @@ ensure_profile_file() {
     exit 1
   fi
   local key
-  for key in DOCKER_VOLUME REDIS_PASSWORD PORT_BIND_IP; do
+  for key in DOCKER_VOLUME REDIS_PASSWORD PORT_BIND_IP GRAFANA_ADMIN_PASSWORD APISIX_ADMIN_KEY XXL_JOB_ACCESS_TOKEN KEYCLOAK_ADMIN_PASSWORD; do
     if ! grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=[^[:space:]]" "$PROFILE_FILE"; then
       echo "Error: $key is missing or empty in $PROFILE_FILE" >&2
       echo "Hint: cp ${PROFILE_FILE}.example ${PROFILE_FILE}" >&2

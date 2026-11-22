@@ -21,4 +21,9 @@ if [ -z "${1:-}" ]; then
   rm -f "$tmp"
 fi
 
+for key in GRAFANA_ADMIN_PASSWORD APISIX_ADMIN_KEY XXL_JOB_ACCESS_TOKEN KEYCLOAK_ADMIN_PASSWORD; do
+  grep -q "^${key}=" "$ROOT/.env.local.example" || fail "local 示例缺少 $key"
+  grep -q "^${key}=" "$ROOT/.env.sit.example" || fail "sit 示例缺少 $key"
+done
+
 printf 'env config tests: OK\n'
