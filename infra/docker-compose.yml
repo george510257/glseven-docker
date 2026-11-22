@@ -40,7 +40,7 @@ services:
     hostname: redis
     # --requirepass enables password authentication.
     # REDIS_PASSWORD comes from .env (see .env.example); the fallback keeps no-.env usage working.
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-glseven_redis_2024}
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-glseven_redis_2024} --maxmemory 256mb --maxmemory-policy allkeys-lru
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/redis/data:/data
     networks:
@@ -129,6 +129,7 @@ services:
       - env/kafka.env
     environment:
       KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://${KAFKA_EXTERNAL_HOST:-127.0.0.1}:29092"
+      KAFKA_HEAP_OPTS: "-Xms512m -Xmx512m"
     volumes:
       # 仅数据目录：/mnt/shared/config 与 /etc/kafka/secrets 是 apache/kafka 官方示例里
       # 用于「挂属性文件」和「挂 SSL 密钥」的路径。镜像内置 VOLUME 会在 Docker 为这两个路径
