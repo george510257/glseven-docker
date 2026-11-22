@@ -97,7 +97,7 @@ services:
     hostname: elk
     environment:
       ES_JAVA_OPTS: "-Xms1g -Xmx1g"
-      LS_JAVA_OPTS: "-Xms512m -Xmx512m"
+      LS_HEAP_SIZE: "512m"
     volumes:
       - ./elk/kibana/config/kibana.yml:/opt/kibana/config/kibana.yml:ro
       # 覆盖内置 beats 输入为明文（内置版要求 TLS，见该文件头注释）。

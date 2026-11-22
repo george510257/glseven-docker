@@ -13,20 +13,30 @@ ${KEEP_BACKUPS:-7} backups.
 EOF
 }
 
+profile_has_key() {
+  grep -qE "^[[:space:]]*(export[[:space:]]+)?$2=[^[:space:]]" "$1"
+}
+
 prune_backups() {
-  local dir="$1" keep="$2" entry count=0
+  local dir="$1" keep="$2" entry base count=0
   [ -d "$dir" ] || return 0
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
+    base="${entry##*/}"
+    case "$base" in
+      [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+      *) continue ;;
+    esac
+    [ -f "$entry/MANIFEST.txt" ] || continue
     count=$((count + 1))
     if [ "$count" -gt "$keep" ]; then
       rm -rf "$entry"
     fi
-  done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d -print | sort -r)
+  done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d -print | LC_ALL=C sort -r)
 }
 
 main() {
-  local profile="" profile_file="" dest stamp
+  local profile="" profile_file="" dest partial stamp
   PROFILE_SET=0
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -49,6 +59,10 @@ main() {
   PROFILE="$(select_profile "$SCRIPT_DIR" "$PROFILE")" || exit 1
   profile_file="$(profile_file "$SCRIPT_DIR" "$PROFILE")"
   [ -f "$profile_file" ] || { echo "Error: profile file not found: $profile_file" >&2; exit 1; }
+  profile_has_key "$profile_file" DOCKER_VOLUME || {
+    echo "Error: DOCKER_VOLUME is missing or empty in $profile_file" >&2
+    exit 1
+  }
 
   # shellcheck source=common/docker-volume.sh
   source "$SCRIPT_DIR/common/docker-volume.sh"
@@ -61,27 +75,33 @@ main() {
   [ "$KEEP_BACKUPS" -ge 1 ] || { echo "Error: KEEP_BACKUPS must be >= 1" >&2; exit 2; }
 
   umask 077
-  mkdir -p "$BACKUP_DIR"
-  chmod 700 "$BACKUP_DIR"
+  if [ ! -d "$BACKUP_DIR" ]; then
+    mkdir -p "$BACKUP_DIR"
+    chmod 700 "$BACKUP_DIR"
+  fi
   stamp="$(date +%Y%m%d-%H%M%S)"
   dest="$BACKUP_DIR/$stamp"
-  mkdir -p "$dest"
-  chmod 700 "$dest"
+  partial="$BACKUP_DIR/${stamp}.partial"
+  mkdir "$partial" || { echo "Error: backup directory already exists: $partial" >&2; exit 1; }
+  chmod 700 "$partial"
   echo "Backing up to $dest (profile: $PROFILE)"
 
-  docker exec mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --all-databases --single-transaction --routines --events' > "$dest/mysql.sql"
-  docker exec mongo sh -c 'mongodump --archive --gzip --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' > "$dest/mongo.archive.gz"
+  docker exec mysql sh -c 'mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" --all-databases --single-transaction --routines --events' > "$partial/mysql.sql"
+  docker exec mongo sh -c 'mongodump --archive --gzip --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' > "$partial/mongo.archive.gz"
+  [ -s "$partial/mysql.sql" ] || { echo "Error: mysql dump is empty" >&2; exit 1; }
+  [ -s "$partial/mongo.archive.gz" ] || { echo "Error: mongo dump is empty" >&2; exit 1; }
   if [ -d "$DOCKER_VOLUME/gitlab/config" ]; then
-    tar -czf "$dest/gitlab-config.tar.gz" -C "$DOCKER_VOLUME/gitlab" config
+    tar -czf "$partial/gitlab-config.tar.gz" -C "$DOCKER_VOLUME/gitlab" config
   fi
 
   {
     echo "timestamp=$stamp"
     echo "profile=$PROFILE"
     echo "docker_volume=$DOCKER_VOLUME"
-    ls -lh "$dest"
-  } > "$dest/MANIFEST.txt"
+    ls -lh "$partial"
+  } > "$partial/MANIFEST.txt"
 
+  mv "$partial" "$dest"
   prune_backups "$BACKUP_DIR" "$KEEP_BACKUPS"
   echo "Backup complete: $dest"
 }
