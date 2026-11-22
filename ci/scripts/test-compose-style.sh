@@ -5,7 +5,7 @@ BASE="$ROOT/common/base-service.yml"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 # Task 2-4 逐步追加已转换的域，保证每个中间提交都是绿的。
-DOMAINS=()
+DOMAINS=(infra observability security)
 
 check_base() {
   [ -f "$BASE" ] || fail "缺少 common/base-service.yml"
@@ -20,7 +20,7 @@ check_base() {
 
 check_header() {
   local file="$1" domain="$2" header
-  header=$(grep -E '^# [A-Z][A-Za-z]+ 172\.18\.[1-7]\.x =+$' "$file" | head -1)
+  header=$(grep -E '^# [A-Z][A-Za-z]+ 172\.18\.[1-7]\.x =+$' "$file" | head -1 || true)
   [ -n "$header" ] || fail "$domain: 域名标题注释格式不正确"
   [ "${#header}" -eq 100 ] || fail "$domain: 域名标题注释应为 100 列（当前 ${#header}）"
 }
@@ -30,7 +30,7 @@ check_services() {
   ! grep -q '^    restart:' "$file" || fail "$domain: 不应再出现 restart:"
   ! grep -q 'common/env/common.env' "$file" || fail "$domain: 不应再引用 common.env"
 
-  for ref in $(grep -hoE '^[[:space:]]+extends: \*[a-z-]+' "$file" | awk '{print $2}' | sort -u); do
+  for ref in $(grep -hoE '^[[:space:]]+extends: \*[a-z-]+' "$file" | awk '{print $2}' | sort -u || true); do
     name="${ref#\*}"
     grep -q "^x-${name}: &${name}$" "$file" ||
       fail "$domain: 使用了未定义的锚点 $ref"
@@ -49,22 +49,24 @@ check_services() {
         print "FAIL: " domain ": " svc " test 数组格式不符合规范"
       svc = ""; ext = ""; cn = ""; hn = ""; hc = 0; test = ""
     }
-    /^  [a-z0-9-]+:$/ { flush(); svc = $1; sub(/:$/, "", svc); first = 1; next }
-    /^    [a-z_]+:/ && first {
+    /^services:$/ { in_services = 1; next }
+    in_services && /^  [a-z0-9-]+:$/ { flush(); svc = $1; sub(/:$/, "", svc); first = 1; next }
+    in_services && /^    [a-z_]+:/ && first {
       if ($1 != "extends:") print "FAIL: " domain ": " svc " 首字段必须是 extends"
       first = 0
     }
-    /^    extends:/ { ext = $2; next }
-    /^    container_name:/ { cn = $2; next }
-    /^    hostname:/ { hn = $2; next }
-    /^    healthcheck:/ { hc = 1; next }
-    /^      test:/ { test = $0; next }
+    in_services && /^    extends:/ { ext = $2; next }
+    in_services && /^    container_name:/ { cn = $2; next }
+    in_services && /^    hostname:/ { hn = $2; next }
+    in_services && /^    healthcheck:/ { hc = 1; next }
+    in_services && /^      test:/ { test = $0; next }
     END { flush() }
   ' "$file")
 
-  for svc in $(awk '/^  [a-z0-9-]+:$/ { n=$1; sub(/:$/, "", n); print n }' "$file"); do
+  for svc in $(awk '/^services:$/ { in_services = 1; next } in_services && /^  [a-z0-9-]+:$/ { n=$1; sub(/:$/, "", n); print n }' "$file"); do
     ext=$(awk -v s="$svc" '
-      $0 == "  " s ":" { in_svc = 1; next }
+      $0 == "services:" { in_services = 1; next }
+      in_services && $0 == "  " s ":" { in_svc = 1; next }
       in_svc && /^  [a-z0-9-]+:$/ { exit }
       in_svc && /^    extends:/ { print $2; exit }
     ' "$file")

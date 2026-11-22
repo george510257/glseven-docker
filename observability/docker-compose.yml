@@ -4,38 +4,36 @@ networks:
   glseven:
     external: true
 
+# 本域服务不发布宿主端口；宿主访问统一经 portal（nginx）代理，见 portal/conf/。
+# 新增或改名服务需同步 5 处，见 common/check-consistency.sh 与 README。
+
+x-healthy: &healthy
+  file: ../common/base-service.yml
+  service: service-healthy
+
 services:
 
-  # Observability 172.18.2.x ===========================================================================================
+# Observability 172.18.2.x =========================================================================
 
   prometheus:
+    extends: *healthy
     image: prom/prometheus:v3.14.0
     container_name: prometheus
     hostname: prometheus
-    restart: always
-    env_file:
-      - ../common/env/common.env
     volumes:
       - ./prometheus/conf/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/prometheus/data:/prometheus
     networks:
       glseven:
         ipv4_address: 172.18.2.1
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
 
   grafana:
+    extends: *healthy
     image: grafana/grafana:13.2.1
     container_name: grafana
     hostname: grafana
-    restart: always
-    env_file:
-      - ../common/env/common.env
     volumes:
       - ./grafana/conf/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/conf/dashboards:/var/lib/grafana/dashboards:ro
@@ -47,29 +45,22 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.2.2
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # /api/health 为匿名可访问端点；镜像内有 curl（Task 1 实测）。
-      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:3000/api/health || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD-SHELL", "curl -f -s -o /dev/null http://localhost:3000/api/health || exit 1"]
 
   filebeat:
     # 日志采集器：把各容器日志送进 elk 的 logstash（5044）——补上「ELK 服务端就绪但无生产者」的缺口
     # （2026-09-21 审查发现：此前全栈无任何 beats/logstash 客户端配置，Kibana 恒空）。
     # 与 elk 同属 observability 域（172.18.2.x），故可写 depends_on（跨 compose project 不行）。
+    extends: *healthy
     image: docker.elastic.co/beats/filebeat:9.5.2
     container_name: filebeat
     hostname: filebeat
-    restart: always
     user: root          # 读 /var/lib/docker/containers 与 docker.sock 需要 root
     # 部署脚本会把仓库属主 chown 到 1000:1000，而容器以 root 运行；Filebeat 9 默认拒绝加载
     # 非 root 所有的配置文件（strict.perms）。关闭该检查以匹配仓库属主模型（配置仍只读挂载）。
-    command: [ "filebeat", "-e", "--strict.perms=false" ]
-    env_file:
-      - ../common/env/common.env
+    command: [ "filebeat", "-e", "--strict.perms=false"]
     volumes:
       - ./filebeat/conf/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -86,19 +77,17 @@ services:
       # test output 会实际连接 output.logstash（elk:5044）并做握手探测——
       # 这才是本容器「健康」的实际含义；test config 只校验 YAML 语法，
       # 配置正确但连不上 logstash 时会假报 healthy（2026-09-22 修正）。
-      test: [ "CMD", "filebeat", "test", "output", "--strict.perms=false" ]
+      test: ["CMD", "filebeat", "test", "output", "--strict.perms=false"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
 
   elk:
+    extends: *healthy
     image: sebp/elk:9.5.2
     container_name: elk
     hostname: elk
-    restart: always
-    env_file:
-      - ../common/env/common.env
     volumes:
       - ./elk/kibana/config/kibana.yml:/opt/kibana/config/kibana.yml:ro
       # 覆盖内置 beats 输入为明文（内置版要求 TLS，见该文件头注释）。
@@ -107,11 +96,6 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.2.3
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # ES 根路径匿名可访问（sebp/elk 默认未启用安全），200 即存活；镜像内有 curl（Task 1 实测）。
-      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:9200/ || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD-SHELL", "curl -f -s -o /dev/null http://localhost:9200/ || exit 1"]

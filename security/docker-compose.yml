@@ -4,18 +4,24 @@ networks:
   glseven:
     external: true
 
+# 本域服务不发布宿主端口；宿主访问统一经 portal（nginx）代理，见 portal/conf/。
+# 新增或改名服务需同步 5 处，见 common/check-consistency.sh 与 README。
+
+x-healthy: &healthy
+  file: ../common/base-service.yml
+  service: service-healthy
+
 services:
 
-  # Security 172.18.3.x ================================================================================================
+# Security 172.18.3.x ==============================================================================
 
   openldap:
     # openldap v1 已官方弃用，v2 仅有 alpha 版；等 v2 稳定版发布后再做一次性迁移。
+    extends: *healthy
     image: osixia/openldap:1.5.0
     container_name: openldap
     hostname: openldap
-    restart: always
     env_file:
-      - ../common/env/common.env
       - env/openldap.env
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/openldap/data:/var/lib/ldap
@@ -40,21 +46,15 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.3.1
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
-      test: [ "CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1:389 -b '' -s base -o ldif-wrap=no > /dev/null 2>&1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://127.0.0.1:389 -b '' -s base -o ldif-wrap=no > /dev/null 2>&1"]
 
   php-ldap-admin:
+    extends: *healthy
     image: phpldapadmin/phpldapadmin:2.3.11
     container_name: php-ldap-admin
     hostname: php-ldap-admin
-    restart: always
     env_file:
-      - ../common/env/common.env
       - env/phpldapadmin.env
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/phpldapadmin/sessions:/app/storage/framework/sessions
@@ -65,36 +65,29 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.3.2
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # 探针工具按 Task 1 验证结果（默认 curl；仅 wget 可用则等价替换）。
-      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://127.0.0.1:8080/ || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD-SHELL", "curl -f -s -o /dev/null http://127.0.0.1:8080/ || exit 1"]
 
   keycloak:
     # start-dev 为官方开发模式（免 TLS/hostname 配置）；数据全部在 MySQL，容器无状态不挂数据卷。
     # mysql 在 infra 域：跨 compose project 不写 depends_on，由 DEFERRED 批次（MySQL 已健康）时序保证。
+    extends: *healthy
     image: keycloak/keycloak:26.7.3
     container_name: keycloak
     hostname: keycloak
-    restart: always
     command: start-dev
     env_file:
-      - ../common/env/common.env
       - env/keycloak.env
     networks:
       glseven:
         ipv4_address: 172.18.3.3
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # 镜像内无 curl/wget，用 bash /dev/tcp 对 9000 管理端口发 HTTP 请求探测 /health/ready
       # （端口监听 ≠ 就绪；顶层 status UP 判定即既往验证标准）。9000 由 KC_HEALTH_ENABLED/KC_METRICS_ENABLED 开启。
       # grep 锚定顶层键（^ + 恰 4 空格缩进，Task 1 实测顶层 4 空格/子 check 12 空格），
       # 避免命中子 check 的 "status": "UP" 行——顶层 DOWN 而子 check UP 时非锚定模式会假阳性（审查已复现）。
-      test: [ "CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '^    \"status\"[[:space:]]*:[[:space:]]*\"UP\"' <&3" ]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '^    \"status\"[[:space:]]*:[[:space:]]*\"UP\"' <&3"]
       interval: 10s
       timeout: 5s
       retries: 10
