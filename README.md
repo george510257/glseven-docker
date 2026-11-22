@@ -100,6 +100,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 - **服务互访走服务名**（Docker DNS），不硬编码 IP；固定 IP 仅用于宿主侧排查与防火墙放行。
 - **配置档案**：`.env.local` / `.env.sit` 承载机器相关值（`PORT_BIND_IP`、`DOCKER_VOLUME`、`KAFKA_EXTERNAL_HOST`、`REDIS_PASSWORD`、`GRAFANA_ADMIN_PASSWORD`、`APISIX_ADMIN_KEY`、`XXL_JOB_ACCESS_TOKEN`、`KEYCLOAK_ADMIN_PASSWORD`），由 `startup.sh --profile` 选择；缺任一必填键 preflight 会直接失败。`*.local.conf` 为本机专属 vhost，二者均 gitignore。
 - **监控接入**：`observability/prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。Prometheus 保留 15 天 / 10GB；filebeat 自监控经 Beats monitoring 进入 Kibana Stack Monitoring（5066 是 JSON，不经 Prometheus）；Grafana 预置 Targets 面板。
+- **资源上限**：ELK 的 ES 堆 1g / Logstash 512m，Kafka 512m，Nexus 768m；Redis `maxmemory 256mb` + `allkeys-lru`；未设硬 `mem_limit`。
 - **日志接入**：`filebeat`（observability 域，172.18.2.4）经 Docker 容器日志接口采集，直发 `elk:5044` 的 logstash；`observability/elk/logstash/config/02-beats-input.conf` 覆盖镜像内置输入为**明文**（内置版要求 TLS）。Kibana 索引前缀为 `filebeat-`（非 `logstash-*`）。
 - **新增服务的同步点**：加一个服务要改 5 处——`<域>/docker-compose.yml`（服务定义用 `extends: *healthy`）、`portal/docker-compose.yml`（ports）、`portal/conf/{conf.d,stream-conf.d}/<服务名>.conf`、`portal/html/index.html` 卡片、README 的 /etc/hosts 清单与访问矩阵。`common/check-consistency.sh`（preflight 第 8 步）会机械校验这些同步点，漏改会告警但不阻断启动。
 
@@ -232,6 +233,22 @@ flush privileges;
   `docker compose --env-file .env.sit -f observability/docker-compose.yml up -d --force-recreate filebeat`
 - **Grafana 管理员口令仅首次初始化生效**：存量实例用 `docker exec grafana grafana cli admin reset-admin-password <new-password>` 重置。
 - **Keycloak bootstrap 口令仅首次空库初始化生效**；存量库不受影响。
+
+## 备份与恢复（backup.sh）
+
+```bash
+bash backup.sh --profile sit          # 或沿用 .glseven-profile
+BACKUP_DIR=/path KEEP_BACKUPS=14 bash backup.sh --profile sit   # 覆盖目录/保留份数
+```
+
+- 输出到 `${BACKUP_DIR:-$DOCKER_VOLUME/backup}/<YYYYmmdd-HHMMSS>/`，目录权限 700。
+- 内容：`mysql.sql`（全库）、`mongo.archive.gz`、`gitlab-config.tar.gz`（存在时）、`MANIFEST.txt`。
+- 保留最近 7 份；成功后按目录名倒序裁剪。
+- 不备份 Nexus blob、Kafka/ELK 数据、Prometheus 指标；GitLab 仓库数据用 `docker exec gitlab gitlab-backup create`。
+- 恢复：
+  - MySQL：`docker exec -i mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD"' < mysql.sql`（建议空库/新卷）。
+  - Mongo：`docker exec -i mongo sh -c 'mongorestore --archive --gzip --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin' < mongo.archive.gz`。
+  - GitLab config：停止 gitlab 后 `tar -xzf gitlab-config.tar.gz -C "$DOCKER_VOLUME/gitlab"`。
 
 ## 已知平台限制（宿主环境，非编排缺陷）
 

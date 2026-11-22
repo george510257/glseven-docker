@@ -14,6 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cp .env.local.example .env.local   # local；sit 用 .env.sit.example → .env.sit
 bash startup.sh --profile local [数据目录]  # 首次必须指定，之后沿用 .glseven-profile
 bash shutdown.sh                           # 沿用上次档案；也可 --profile
+bash backup.sh --profile sit               # 备份 MySQL/Mongo/GitLab config，保留 7 份
 ```
 
 单域操作（七个 compose 文件都声明 `networks.glseven.external: true`，网络必须先存在；devops 仅 sit 启动）：
@@ -89,6 +90,7 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 - **共享 HTTP 端口**（3000 / 8080 / 8081）只绑定一次，按 `server_name` 分流；裸 IP 直连由 `00-default-catchall.conf` 302 到门户。
 - **修改 `REDIS_PASSWORD`** 后需同时重建 `redis` 与 `moontv`（`REDIS_URL` 未做百分号编码，口令避免 `/ ? # % @ '` 和空格）。
 - **healthcheck 探针必须匹配镜像实际具备的工具**（部分镜像无 curl/wget，apisix 与 nginx 用 `bash /dev/tcp`，etcd 无 shell 只能用 exec 形式）。compose 文件内的注释记录了每个探针的实测结论——改探针前先读。
+- **资源上限与备份**：ELK 的 ES 堆 1g / Logstash 512m、Kafka 512m、Nexus 768m、Redis 256mb allkeys-lru，未设硬 `mem_limit`；`backup.sh` 备份 MySQL/Mongo/GitLab config，保留 7 份，不备份 GitLab 仓库与日志/指标数据。
 - **YAML / nginx / 组件配置用 2 空格缩进；Bash 用 snake_case、变量加引号**，复用现有脚本里的数组与函数。
 - **`docs/superpowers/specs/` 与 `docs/superpowers/plans/`** 保存了已确认的设计结论（nginx 统一入口、配置审计修复、CI 与语义化发布）。重新讨论某个设计选择前先查：若干「看起来更合理」的备选方案已被明确否决并记录了理由。
 - `AGENTS.md` 是同一仓库的通用指南；细节与最新结论以 README 和本文件为准。
