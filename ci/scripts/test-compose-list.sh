@@ -22,6 +22,12 @@ grep -q -- '--remove-orphans' "$ROOT/shutdown.sh" ||
   fail "shutdown.sh 必须清理孤儿容器"
 grep -q 'ps -aq' "$ROOT/startup.sh" ||
   fail "startup.sh 必须检测并停止残留 devops"
+grep -q 'network_removed' "$ROOT/shutdown.sh" ||
+  fail "shutdown.sh 必须记录网络移除结果"
+grep -q '网络 glseven 保留' "$ROOT/shutdown.sh" ||
+  fail "shutdown.sh 必须区分网络保留的最终横幅"
+grep -q 'still in use' "$ROOT/shutdown.sh" ||
+  fail "shutdown.sh 必须打印网络占用者"
 ! grep -q 'gitlab-runner/cache' "$ROOT/startup.sh" ||
   fail "startup.sh 不应创建未挂载的 gitlab-runner/cache"
 

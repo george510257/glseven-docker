@@ -28,8 +28,13 @@ grep -Fq 'devops/docker-compose.yml' "$ROOT/docs/runbooks/sit-cicd-bootstrap.md"
 grep -Fq 'KAFKA_EXTERNAL_HOST' "$ROOT/portal/conf/stream-conf.d/kafka.conf" ||
   fail "Kafka stream 注释未说明 advertised 来源"
 
-server_count=$(grep -Fh -c 'server {' "$ROOT"/portal/conf/conf.d/*.conf | awk '{sum += $1} END {print sum}')
-grep -Fq "${server_count} 个 server 块" "$ROOT/portal/docker-compose.yml" ||
+server_count=0
+for f in "$ROOT"/portal/conf/conf.d/*.conf; do
+  case "$f" in *.local.conf) continue ;; esac
+  count=$(grep -Fc 'server {' "$f" || true)
+  server_count=$((server_count + count))
+done
+grep -Eq "(^|[^0-9])${server_count} 个 server 块" "$ROOT/portal/docker-compose.yml" ||
   fail "portal compose 的 server 块计数与实际 ${server_count} 不一致"
 
 printf 'doc consistency tests: OK\n'
