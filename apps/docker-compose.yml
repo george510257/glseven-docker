@@ -4,27 +4,32 @@ networks:
   glseven:
     external: true
 
+# 本域服务不发布宿主端口；宿主访问统一经 portal（nginx）代理，见 portal/conf/。
+# 新增或改名服务需同步 5 处，见 common/check-consistency.sh 与 README。
+
+x-healthy: &healthy
+  file: ../common/base-service.yml
+  service: service-healthy
+
 services:
 
-  # Apps 172.18.5.x ====================================================================================================
+# Apps 172.18.5.x ==================================================================================
 
   ollama:
+    extends: *healthy
     image: ollama/ollama:0.33.3
     container_name: ollama
     hostname: ollama
-    restart: always
     tty: true
     env_file:
-      - ../common/env/common.env
       - env/ollama.env
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/ollama:/root/.ollama
     networks:
       glseven:
         ipv4_address: 172.18.5.1
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
-      test: [ "CMD-SHELL", "ollama ls" ]
+      test: ["CMD-SHELL", "ollama ls"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -44,12 +49,11 @@ services:
         #         count: all
 
   open-webui:
+    extends: *healthy
     image: ghcr.io/open-webui/open-webui:v0.11.3
     container_name: open-webui
     hostname: open-webui
-    restart: always
     env_file:
-      - ../common/env/common.env
       - env/open-webui.env
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/open-webui/data:/app/backend/data
@@ -59,22 +63,16 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.5.2
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # /health 为 open-webui 自带端点；探针工具按 Task 1 验证结果。
-      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:8080/health || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD-SHELL", "curl -f -s -o /dev/null http://localhost:8080/health || exit 1"]
 
   moontv:
+    extends: *healthy
     image: ghcr.io/moontechlab/lunatv:v100.1.3
     container_name: moontv
     hostname: moontv
-    restart: always
     env_file:
-      - ../common/env/common.env
       - env/moontv.env
     # redis 在 infra 域：跨 compose project 不写 depends_on，由 BASE 先于 DEFERRED 启动时序 + restart: always 兜底。
     environment:
@@ -83,23 +81,17 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.5.3
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # 探针工具按 Task 1 验证结果（默认 wget；仅 curl 可用则等价替换）。
-      test: [ "CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1"]
 
   iptv:
+    extends: *healthy
     image: akiralereal/iptv:4.15.0
     container_name: iptv
     hostname: iptv
     init: true                    # 回收 Chromium 僵尸进程
-    restart: always
     env_file:
-      - ../common/env/common.env
       - env/iptv.env
     volumes:
       # /migu/data 是镜像内置 VOLUME；不显式覆盖时每次重建容器都会生成匿名 hash 卷。
@@ -108,9 +100,8 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.5.4
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
-      test: [ "CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:1905/ || exit 1" ]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:1905/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

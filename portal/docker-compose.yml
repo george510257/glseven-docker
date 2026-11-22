@@ -4,19 +4,24 @@ networks:
   glseven:
     external: true
 
+# portal 是唯一持有宿主端口的域；其余域服务统一经这里代理，见 portal/conf/。
+# 新增或改名服务需同步 5 处，见 common/check-consistency.sh 与 README。
+
+x-healthy: &healthy
+  file: ../common/base-service.yml
+  service: service-healthy
+
 services:
 
-  # Portal 172.18.6.x ==================================================================================================
+# Portal 172.18.6.x ================================================================================
 
   nginx:
     # 统一入口：http 虚拟主机（监听端口 = 容器原生端口，24 个 server 块，含根域兼容跳转与共享端口 default_server 兜底）+ stream TCP 透明转发（17 条原生端口）。
     # 全栈唯一持有宿主端口的容器；stream 静态上游依赖 portal 最后一批启动（compose-list.sh）。
+    extends: *healthy
     image: nginx:1.30.4
     container_name: nginx
     hostname: nginx
-    restart: always
-    env_file:
-      - ../common/env/common.env
     volumes:
       - ./conf/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./conf/snippets:/etc/nginx/snippets:ro
@@ -59,8 +64,4 @@ services:
       - "1905:1905"    # http → iptv 直播源管理
     healthcheck:
       # 镜像内无 curl/wget（debian-slim 底座），沿用项目已验证的 bash /dev/tcp 探测模式；探门户监听 8000。
-      test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8000' || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8000' || exit 1"]

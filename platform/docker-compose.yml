@@ -4,17 +4,26 @@ networks:
   glseven:
     external: true
 
+# 本域服务不发布宿主端口；宿主访问统一经 portal（nginx）代理，见 portal/conf/。
+# 新增或改名服务需同步 5 处，见 common/check-consistency.sh 与 README。
+
+x-healthy: &healthy
+  file: ../common/base-service.yml
+  service: service-healthy
+x-common: &common
+  file: ../common/base-service.yml
+  service: service-common
+
 services:
 
-  # Platform 172.18.4.x ================================================================================================
+# Platform 172.18.4.x ==============================================================================
 
   nacos:
+    extends: *healthy
     image: nacos/nacos-server:v3.2.4
     container_name: nacos
     hostname: nacos
-    restart: always
     env_file:
-      - ../common/env/common.env
       - env/nacos.env
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/nacos/logs:/home/nacos/logs
@@ -22,95 +31,66 @@ services:
     networks:
       glseven:
         ipv4_address: 172.18.4.1
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # v3 控制台/就绪端点在 8080（容器内直连，宿主经 nacos.glseven.local 代理）；8848 的 actuator health 在 v3 已不暴露。
       # 依赖 nacos 3.0.3+ 行为：模块 not ready 返回 500（nacos#13437/#13644），降级镜像后勿沿用此探针。
       test: ["CMD", "curl", "-f", "http://localhost:8080/v3/console/health/readiness"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
 
   xxl-job-admin:
+    extends: *healthy
     image: xuxueli/xxl-job-admin:3.4.2
     container_name: xxl-job-admin
     hostname: xxl-job-admin
-    restart: always
-    env_file:
-      - ../common/env/common.env
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/xxl-job-admin/logs:/data/applogs
       - ./xxl-job-admin/application.properties:/application.properties:ro
     networks:
       glseven:
         ipv4_address: 172.18.4.2
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/xxl-job-admin/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
 
   nexus3:
+    extends: *healthy
     image: sonatype/nexus3:3.96.0
     container_name: nexus3
     hostname: nexus3
-    restart: always
-    env_file:
-      - ../common/env/common.env
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/nexus3/data:/nexus-data
     networks:
       glseven:
         ipv4_address: 172.18.4.3
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # /service/rest/v1/status 就绪时 200、启动中 503（匿名可访问）。
-      test: [ "CMD-SHELL", "curl -f -s -o /dev/null http://localhost:8081/service/rest/v1/status || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD-SHELL", "curl -f -s -o /dev/null http://localhost:8081/service/rest/v1/status || exit 1"]
 
   portainer:
     # 不加探针：镜像为极简底座、无 shell/curl/wget（Task 1 实测），无法执行任何探测命令。
+    extends: *common
     image: portainer/portainer-ce:2.45.0
     container_name: portainer
     hostname: portainer
-    restart: always
-    env_file:
-      - ../common/env/common.env
     volumes:
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/portainer/data:/data
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       glseven:
         ipv4_address: 172.18.4.4
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
 
   apisix:
     # 独立网关组件：数据面 + Admin API 就绪，路由留空由微服务开发自行配置。
     # etcd 在 infra 域：跨 compose project 不写 depends_on（已知坑），由批次时序 + 启动重试 + restart 兜底。
     # Dashboard 内置于 3.6+ 镜像（独立 dashboard 项目已退役）：经 Admin API 端口的 /ui/ 路径访问
     # （portal 9180 反代直达，输入 X-API-KEY 鉴权，键见 apisix/conf/config.yaml）；9443(TLS) 暂不开放（YAGNI）。
+    extends: *healthy
     image: apache/apisix:3.18.0-debian
     container_name: apisix
     hostname: apisix
-    restart: always
-    env_file:
-      - ../common/env/common.env
     volumes:
       - ./apisix/conf/config.yaml:/usr/local/apisix/conf/config.yaml:ro
     networks:
       glseven:
         ipv4_address: 172.18.4.5
-    # 宿主访问统一经 nginx（portal）代理：每容器一配置文件，stream 见 portal/conf/stream-conf.d/，子域名见 portal/conf/conf.d/。
     healthcheck:
       # 镜像内无 curl/wget（Task 1 实测），改用 bash /dev/tcp 对数据面 9080 做 TCP 存活探测。
-      test: [ "CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9080' || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/9080' || exit 1"]
