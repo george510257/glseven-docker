@@ -104,14 +104,17 @@ chown_top() {
 # top 表示只 chown 顶层目录、不递归：GitLab 的 config/logs/data 由多个服务用户共同持有，
 # 递归 chown 会把 redis(997)/postgresql(996) 的既有文件刷成 998，重部署后这两个服务无法启动
 # （2026-11-22 sit 重部署实测：dump.rdb Permission denied，gitlab-ctl status 两者 down）。
-# 属主 uid 依据：nexus3=200、prometheus=65534(nobody)、grafana=472、elk/kafka=1000、phpldapadmin=82(www-data)、gitlab=998。
+# 属主 uid 依据：nexus3=200、prometheus=65534(nobody)、grafana=472、kafka=1000、phpldapadmin=82(www-data)、gitlab=998。
+# elk 镜像 sebp/elk:9.5.2 内 ES 以 uid 991 运行（ES_UID=991），数据目录必须是 991：
+# 属主为 1000 时 ES 无法写入，会因 data-path 健康检查失败而拒绝参选 master，Kibana 恒 503
+# （2026-11-22 sit 实测）。
 # kafka 是 2026-09-21 修复「数据不落盘」时新增：设了 KAFKA_LOG_DIRS 后 compose 会预建
 # /var/lib/kafka/data 挂载点，属主不是 1000(appuser) 则 broker 起不来。
 DIR_SPECS=(
   "nexus3/data 200"
   "prometheus/data 65534"
   "grafana/data 472"
-  "elk/data 1000"
+  "elk/data 991"
   "kafka/data 1000"
   "kafka/secrets 1000"
   "kafka/shared-config 1000"

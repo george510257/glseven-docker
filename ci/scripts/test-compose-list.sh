@@ -23,5 +23,7 @@ done
 for dir in gitlab/config gitlab/logs gitlab/data; do
   grep -q "\"$dir [0-9]* top\"" "$ROOT/startup.sh" || fail "DIR_SPECS 的 $dir 必须标记 top"
 done
+# elk 镜像内 ES 以 uid 991 运行，属主错会因 data-path 健康检查失败导致 Kibana 503（2026-11-22 sit 实测）。
+grep -q '"elk/data 991"' "$ROOT/startup.sh" || fail "DIR_SPECS 的 elk/data 必须是 991"
 
 printf 'compose-list tests: OK\n'
