@@ -17,7 +17,7 @@ services:
 
   gitlab:
     # 平台域：GitLab CE，仅 sit 档案启动（common/compose-list.sh 门控）。
-    # external_url 带端口：容器内 nginx 监听 8929，经 portal 暴露为 gitlab.glseven.local:8929。
+    # external_url 带端口：容器内 nginx 监听 8080，经 portal 暴露为 gitlab.glseven.local:8080。
     # 裁剪项：关闭自带 registry（制品统一走 Nexus）、Prometheus、KAS、Pages；Puma/Sidekiq 减配。
     extends: *base
     image: gitlab/gitlab-ce:19.6.1-ce.0
@@ -26,8 +26,12 @@ services:
     shm_size: 256m
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://gitlab.glseven.local:8929'
-        gitlab_rails['gitlab_shell_ssh_port'] = 2224
+        external_url 'http://gitlab.glseven.local:8080'
+        # external_url 的端口即容器内 omnibus nginx 监听端口；Puma 默认也绑 8080，
+        # 且 Sidekiq 默认占 8082，均须错开，否则 puma 反复 EADDRINUSE、/-/readiness 恒 502
+        # （2026-11-22 sit 实测）。
+        puma['port'] = 8083
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
         gitlab_rails['time_zone'] = 'Asia/Shanghai'
         # 健康端点（/-/readiness）默认仅允许 localhost；门户经 172.18/16 代理，需放行容器网段。
         gitlab_rails['monitoring_whitelist'] = ['127.0.0.0/8', '::1', '172.18.0.0/16']
@@ -46,7 +50,7 @@ services:
         ipv4_address: 172.18.7.1
     healthcheck:
       # 官方镜像自带 curl；/-/readiness 就绪返回 200，首次 reconfigure 较慢。
-      test: ["CMD", "curl", "-f", "http://localhost:8929/-/readiness"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/-/readiness"]
       interval: 30s
       timeout: 10s
       retries: 20

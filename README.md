@@ -19,7 +19,7 @@ bash startup.sh --profile local
 # sit：bash startup.sh --profile sit
 
 # 4. 全部入口聚合在导航页（nginx 为唯一持有宿主端口的容器）
-open http://portal.glseven.local:8000
+open http://portal.glseven.local:8080
 
 # 停止：沿用上次档案；也可显式 bash shutdown.sh --profile sit
 bash shutdown.sh
@@ -27,7 +27,7 @@ bash shutdown.sh
 
 两套档案都已被 gitignore，只提交模板。切换档案只需改 `--profile`；启动横幅会打印实际档案与数据目录。直接运行 `docker compose` 时必须带 `--env-file .env.local`（或 `.env.sit`），否则会因缺少 `DOCKER_VOLUME` 明确报错。本机专属的 portal vhost 放 `portal/conf/conf.d/*.local.conf`（已 gitignore，不参与一致性校验），athena 即此类。
 
-存量环境升级时，需在 `/etc/hosts` 追加 `127.0.0.1 portal.glseven.local`。根域条目可以保留，`glseven.local:8000` 会自动 301 到新入口。
+存量环境升级时，需在 `/etc/hosts` 追加 `127.0.0.1 portal.glseven.local`。根域条目可以保留，`glseven.local:8080` 会自动 301 到新入口。
 
 数据目录优先级为：显式数据目录参数 > 已导出的 `DOCKER_VOLUME` > 当前档案的 `DOCKER_VOLUME` > 平台默认值。平台默认值在 Linux 为 `/docker/glseven`，在 macOS 为 `$HOME/docker/glseven`（macOS 根卷只读，不能使用 `/docker`）。也可显式指定：`bash startup.sh --profile local /data/glseven`。Linux 上需 root/sudo 执行（脚本按 DIR_SPECS 将数据目录 chown 到容器运行 uid）；macOS Docker Desktop 无此要求。
 
@@ -59,11 +59,11 @@ bash shutdown.sh
 
 ## 服务访问入口
 
-**nginx（portal）是唯一持有宿主端口的容器**（30 个端口：8000 门户 + 12 个原生 http 监听 + 17 条 stream），其余 26 个服务零宿主端口；门户端口按档案绑定：local 默认只监听 `127.0.0.1`，sit 默认监听 `0.0.0.0`，由 `PORT_BIND_IP` 覆盖。门户二级域名固定为 `portal.glseven.local`（容器名仍为 `nginx`），其余服务二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户；根域 `glseven.local:8000` 仅作兼容跳转。
+**nginx（portal）是唯一持有宿主端口的容器**（28 个端口：8080 共享入口（门户 + GitLab + 6 个原生服务）+ 10 个原生 http 监听 + 17 条 stream），其余 26 个服务零宿主端口；门户端口按档案绑定：local 默认只监听 `127.0.0.1`，sit 默认监听 `0.0.0.0`，由 `PORT_BIND_IP` 覆盖。门户二级域名固定为 `portal.glseven.local`（容器名仍为 `nginx`），其余服务二级域名 = 容器名，URL 端口 = 容器原生端口（门户与 GitLab 因 fnOS 占用 80 改用 8080），需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户；根域 `glseven.local:8080` 仅作兼容跳转。
 
 | 服务 | 入口 | 说明 |
 |---|---|---|
-| 导航门户 | http://portal.glseven.local:8000 | 全部入口聚合（nginx 静态页） |
+| 导航门户 | http://portal.glseven.local:8080 | 全部入口聚合（nginx 静态页） |
 | Adminer | http://adminer.glseven.local:8080 | MySQL 管理 |
 | mongo-express | http://mongo-express.glseven.local:8081 | MongoDB 管理（凭据见 env） |
 | RabbitMQ 管理 | http://rabbitmq.glseven.local:15672 | AMQP/MQTT 走下方协议端口 |
@@ -72,7 +72,7 @@ bash shutdown.sh
 | Nacos | http://nacos.glseven.local:8080 | 控制台（API/gRPC 走下方协议端口） |
 | XXL-JOB | http://xxl-job-admin.glseven.local:8080/xxl-job-admin/ | 控制台（context-path 保留前缀） |
 | Nexus | http://nexus3.glseven.local:8081 | Web UI（Docker Registry 走 localhost:5000） |
-| GitLab | http://gitlab.glseven.local:8929 | 代码仓库与 CI/CD（仅 sit 档案启动） |
+| GitLab | http://gitlab.glseven.local:8080 | 代码仓库与 CI/CD（仅 sit 档案启动） |
 | Portainer | http://portainer.glseven.local:9000 | 容器管理 |
 | APISIX | http://apisix.glseven.local:9180/ui | Dashboard / Admin API（X-API-KEY 见 profile 的 `APISIX_ADMIN_KEY`）；数据面 :9080 |
 | Prometheus | http://prometheus.glseven.local:9090 | 指标（7 个抓取 job） |
@@ -91,7 +91,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 
 ## sit CI/CD 平台（devops 域）
 
-`devops/docker-compose.yml` 承载 GitLab CE 与 GitLab Runner，仅在 `--profile sit` 时启动（`common/compose-list.sh` 的 `profile_includes_devops` 门控），本机 `local` 不启动；本机访问 `gitlab.glseven.local:8929` 返回 502 属预期。流水线定义在 `.gitlab-ci.yml`：`develop` 推送自动部署 sit（改动 `devops/docker-compose.yml` 时跳过，需宿主手工部署），`main` 推送创建 tag 与 Release，回滚用手动 `deploy:sit:rollback` 作业。首次引导、备份与排障见 `docs/runbooks/sit-cicd-bootstrap.md`。
+`devops/docker-compose.yml` 承载 GitLab CE 与 GitLab Runner，仅在 `--profile sit` 时启动（`common/compose-list.sh` 的 `profile_includes_devops` 门控），本机 `local` 不启动；本机访问 `gitlab.glseven.local:8080` 返回 502 属预期。流水线定义在 `.gitlab-ci.yml`：`develop` 推送自动部署 sit（改动 `devops/docker-compose.yml` 时跳过，需宿主手工部署），`main` 推送创建 tag 与 Release，回滚用手动 `deploy:sit:rollback` 作业。首次引导、备份与排障见 `docs/runbooks/sit-cicd-bootstrap.md`。
 
 ## 配置约定
 
@@ -257,7 +257,7 @@ BACKUP_DIR=/path KEEP_BACKUPS=14 bash backup.sh --profile sit   # 覆盖目录/�
 - **Portainer 初始化**：创建 admin 前需从容器日志取 Setup token（`docker logs portainer 2>&1 | grep setup_token`，每次重启会刷新）；且 5 分钟未完成初始化会自动锁定（页面不可操作），需 `docker restart portainer` 后用新 token 重来。初始化请求经 nginx 时需保留原始 Host 头（已在 snippets/proxy.conf 用 `$http_host` 配置）。
 - **phpLDAPadmin 登录**：登录者必须是目录内真实条目，而 osixia/openldap 只把 `cn=admin` 设为 olcRootDN（DB 级 bind 凭据，无目录条目），因此仓库附 `security/openldap/bootstrap/admin-entry.ldif`（含 `uid=admin`），首次初始化卷后需导入一次（命令见该文件头注释），导入后 USER ID 填 `admin` 登录（bind 实际走 olcRootDN，具全权）。登录后若见一次 500 页，刷新即可（登录表单闪存残留，一次性）。另：PLA 检索用户需绑定搜索账号（默认 ACL 拒匿名读），见 `security/env/phpldapadmin.env`。
 - **Registry :5000**：端口绑定主体是 nginx（portal），但 macOS 上该端口仍可能被 AirPlay Receiver（ControlCenter 进程）占用导致容器启动报 `port is already allocated`，需在系统设置关闭 AirPlay Receiver（全栈唯一需宿主侧配合的端口）。
-- **GitLab/Runner（devops 域）**：仅 `sit` 档案启动（`profile_includes_devops` 门控）；本机 `local` 访问 `gitlab.glseven.local:8929` 返回 502 属预期。GitLab 常驻约 3–3.5 GiB，legion 可用内存约 6 GiB 时需限制构建并发（runner `concurrent = 1`）。
+- **GitLab/Runner（devops 域）**：仅 `sit` 档案启动（`profile_includes_devops` 门控）；本机 `local` 访问 `gitlab.glseven.local:8080` 返回 502 属预期。GitLab 常驻约 3–3.5 GiB，legion 可用内存约 6 GiB 时需限制构建并发（runner `concurrent = 1`）。
 - **ollama GPU**：GPU 请求默认关闭（apps/docker-compose.yml 中 `deploy.resources.reservations` 为注释块）。Linux 宿主如需 GPU 加速，取消该注释块后 `docker compose --env-file .env.local -f apps/docker-compose.yml up -d ollama`，要求 NVIDIA 驱动 ≥550（旧卡 ≥570）；macOS Docker Desktop 无 nvidia device driver，保持默认 CPU 运行。
 - **open-webui 首启**：需从 HuggingFace 下载 embedding 模型，网络受限环境可用环境变量 `HF_ENDPOINT=https://hf-mirror.com` 指向镜像源。
 - **filebeat 挂 docker.sock**：以 `user: root` 运行并只读挂载 `/var/run/docker.sock` 与 `/var/lib/docker/containers`（采集容器日志所需）。Docker Desktop（macOS/Windows）下这些路径由 VM 侧提供，通常可直接工作；若日志采集为空，先 `docker logs filebeat` 看是否为 socket 路径差异。该容器的 docker.sock 是**只读**挂载，不具备改写宿主 Docker 状态的能力。

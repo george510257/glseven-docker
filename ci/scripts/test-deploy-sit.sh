@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
-out="$(TARGET_SHA=abc123 CI_REPOSITORY_URL="http://gitlab-ci-token:x@gitlab:8929/g/p.git" \
+out="$(TARGET_SHA=abc123 CI_REPOSITORY_URL="http://gitlab-ci-token:x@gitlab:8080/g/p.git" \
   DRY_RUN=1 bash "$ROOT/ci/deploy-sit.sh")"
 
 for expected in \

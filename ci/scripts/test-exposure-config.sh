@@ -10,9 +10,9 @@ grep -q '^PORT_BIND_IP=127\.0\.0\.1$' "$ROOT/.env.local.example" || fail "local 
 grep -q '^PORT_BIND_IP=0\.0\.0\.0$' "$ROOT/.env.sit.example" || fail "sit 示例缺少 PORT_BIND_IP=0.0.0.0"
 
 count=$(grep -cE '^      - "\$\{PORT_BIND_IP:-127\.0\.0\.1\}:[0-9]+:[0-9]+"' "$ROOT/portal/docker-compose.yml")
-[ "$count" -eq 30 ] || fail "portal 应有 30 条带 PORT_BIND_IP 的 ports，实际 $count"
+[ "$count" -eq 28 ] || fail "portal 应有 28 条带 PORT_BIND_IP 的 ports，实际 $count"
 total=$(grep -cE '^      - "[^"]+:[0-9]+:[0-9]+"' "$ROOT/portal/docker-compose.yml")
-[ "$total" -eq 30 ] || fail "portal 总 ports 应为 30 条，实际 $total"
+[ "$total" -eq 28 ] || fail "portal 总 ports 应为 28 条，实际 $total"
 
 grep -q 'NF >= 3' "$ROOT/common/preflight.sh" || fail "preflight 端口解析应兼容两段/三段式"
 grep -q 'PORT_BIND_IP' "$ROOT/common/preflight.sh" || fail "preflight 未校验 PORT_BIND_IP"

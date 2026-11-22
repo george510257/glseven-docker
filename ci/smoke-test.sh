@@ -36,8 +36,8 @@ probe() {
 }
 
 echo "Smoke: host-published endpoints"
-probe "http://127.0.0.1:8000/" "portal.glseven.local"
-probe "http://127.0.0.1:8929/-/readiness" "gitlab.glseven.local"
+probe "http://127.0.0.1:8080/" "portal.glseven.local"
+probe "http://127.0.0.1:8080/-/readiness" "gitlab.glseven.local"
 
 if docker run --rm $CURL_HOST "$CURL_IMAGE" \
   -sS -o /dev/null -w '%{http_code}' -H "Host: nexus3.glseven.local" \

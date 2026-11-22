@@ -59,7 +59,7 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 
 **`common/compose-list.sh` 是启动顺序的唯一数据源。** 它定义 `COMPOSE_FILES_BASE` / `_DEFERRED` / `_PORTAL` 与 Apple Silicon 的 observability 子集，`startup.sh`、`shutdown.sh` 共同消费。新增域只改这一个文件。时序：BASE（infra + observability）→ 等 MySQL healthy（120s 超时）→ DEFERRED（security + platform + apps）→ DEVOPS（仅 sit）→ PORTAL。
 
-**nginx（portal）是唯一持有宿主端口的容器。** 发布 30 个端口 = 8000 门户 + 12 个原生 HTTP 监听 + 17 条 stream 透明转发；其余 26 个服务 `ports:` 一律为空；宿主绑定地址由 profile 的 `PORT_BIND_IP` 控制（local 默认 `127.0.0.1`，sit 默认 `0.0.0.0`）。配置按容器拆分：HTTP vhost 在 `portal/conf/conf.d/<容器名>.conf`（每个有 HTTP 入口的容器一个，另有 `00-default-catchall.conf` 处理裸 IP 与共享端口兜底，`00-` 前缀不可去掉），TCP 在 `portal/conf/stream-conf.d/<容器名>.conf`（12 个文件覆盖 17 条 stream）。核心规则：**nginx 监听端口 = 容器原生端口**，客户端连接串零改动。
+**nginx（portal）是唯一持有宿主端口的容器。** 发布 28 个端口 = 8080 共享入口（门户 + GitLab + 6 个原生服务）+ 10 个原生 HTTP 监听 + 17 条 stream 透明转发；其余 26 个服务 `ports:` 一律为空；宿主绑定地址由 profile 的 `PORT_BIND_IP` 控制（local 默认 `127.0.0.1`，sit 默认 `0.0.0.0`）。配置按容器拆分：HTTP vhost 在 `portal/conf/conf.d/<容器名>.conf`（每个有 HTTP 入口的容器一个，另有 `00-default-catchall.conf` 处理裸 IP 与共享端口兜底，`00-` 前缀不可去掉），TCP 在 `portal/conf/stream-conf.d/<容器名>.conf`（12 个文件覆盖 17 条 stream）。核心规则：**nginx 监听端口 = 容器原生端口**，客户端连接串零改动；门户与 GitLab 因 fnOS 占用 80，例外统一用 8080。
 
 **stream 上游在启动期静态解析服务名**，所以 portal 必须最后一批启动；不要提前单独拉起 nginx，也不要把它从批次里拆出来。
 
@@ -87,7 +87,7 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 - **env 分层**：每服务一个 `<域>/env/<service>.env`，经 `env_file` 引用；含默认凭据的文件顶部有 `# WARNING:` 注释。**`env_file` 的值不被 Compose 插值**——凡需插值的（`${DOCKER_VOLUME}`、`${REDIS_PASSWORD}`）必须放在当前档案 `.env.<profile>`。既往踩坑记录见 `infra/env/kafka.env` 注释。`.env.*` 档案已 gitignore，preflight 会收紧为 600。
 - **配置档案**：`.env.local` / `.env.sit` 承载机器相关值（`PORT_BIND_IP`、`DOCKER_VOLUME`、`KAFKA_EXTERNAL_HOST`、`REDIS_PASSWORD`、`GRAFANA_ADMIN_PASSWORD`、`APISIX_ADMIN_KEY`、`XXL_JOB_ACCESS_TOKEN`、`KEYCLOAK_ADMIN_PASSWORD`），由 `startup.sh --profile` 选择；直接跑 compose 必须带 `--env-file`。缺任一必填键 preflight 会直接失败。本机专属 vhost 用 `portal/conf/conf.d/*.local.conf`（gitignore，不参与一致性校验）。
 - **服务互访一律走服务名**（Docker DNS），不硬编码 IP。固定 IP 仅用于宿主侧排查与防火墙放行。
-- **共享 HTTP 端口**（3000 / 8080 / 8081）只绑定一次，按 `server_name` 分流；裸 IP 直连由 `00-default-catchall.conf` 302 到门户。
+- **共享 HTTP 端口**（3000 / 8080 / 8081）只绑定一次，按 `server_name` 分流；8080 同时承载门户与 GitLab（fnOS 占用 80 的标准替代）；裸 IP 直连由 `00-default-catchall.conf` 302 到门户。
 - **修改 `REDIS_PASSWORD`** 后需同时重建 `redis` 与 `moontv`（`REDIS_URL` 未做百分号编码，口令避免 `/ ? # % @ '` 和空格）。
 - **healthcheck 探针必须匹配镜像实际具备的工具**（部分镜像无 curl/wget，apisix 与 nginx 用 `bash /dev/tcp`，etcd 无 shell 只能用 exec 形式）。compose 文件内的注释记录了每个探针的实测结论——改探针前先读。
 - **资源上限与备份**：ELK 的 ES 堆 1g / Logstash 512m、Kafka 512m、Nexus 768m、Redis 256mb allkeys-lru，未设硬 `mem_limit`；`backup.sh` 备份 MySQL/Mongo/GitLab config，保留 7 份，不备份 GitLab 仓库与日志/指标数据。
@@ -97,4 +97,4 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 
 ## 平台限制
 
-以 `README.md` §「已知平台限制」为准，该节持续维护。要点：`sebp/elk` 仅 amd64，Apple Silicon 上启动即失败（`startup.sh` 自动跳过并继续其余服务）；Portainer 5 分钟未初始化会锁死，需重启容器取新 setup token；宿主 5000 端口（registry）与 macOS AirPlay Receiver 冲突；phpLDAPadmin 首次初始化后需导入一次 `security/openldap/bootstrap/admin-entry.ldif`。在新宿主上排查启动失败前，先读这一节。GitLab/Runner 仅 `sit` 档案启动，本机 `local` 访问 `gitlab.glseven.local:8929` 返回 502 属预期。
+以 `README.md` §「已知平台限制」为准，该节持续维护。要点：`sebp/elk` 仅 amd64，Apple Silicon 上启动即失败（`startup.sh` 自动跳过并继续其余服务）；Portainer 5 分钟未初始化会锁死，需重启容器取新 setup token；宿主 5000 端口（registry）与 macOS AirPlay Receiver 冲突；phpLDAPadmin 首次初始化后需导入一次 `security/openldap/bootstrap/admin-entry.ldif`。在新宿主上排查启动失败前，先读这一节。GitLab/Runner 仅 `sit` 档案启动，本机 `local` 访问 `gitlab.glseven.local:8080` 返回 502 属预期。

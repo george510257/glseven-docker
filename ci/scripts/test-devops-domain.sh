@@ -13,16 +13,16 @@ grep_file 'container_name: gitlab$' devops/docker-compose.yml
 grep_file 'container_name: gitlab-runner$' devops/docker-compose.yml
 
 [ -f "$ROOT/portal/conf/conf.d/gitlab.conf" ] || fail "缺少 conf.d/gitlab.conf"
-grep_file 'listen 8929;' portal/conf/conf.d/gitlab.conf
+grep_file 'listen 8080;' portal/conf/conf.d/gitlab.conf
 grep_file 'server_name gitlab.glseven.local;' portal/conf/conf.d/gitlab.conf
 grep_file 'resolver 127.0.0.11' portal/conf/conf.d/gitlab.conf
 
 [ -f "$ROOT/portal/conf/stream-conf.d/gitlab.conf" ] || fail "缺少 stream-conf.d/gitlab.conf"
-grep_file 'listen 2224;' portal/conf/stream-conf.d/gitlab.conf
+grep_file 'listen 2222;' portal/conf/stream-conf.d/gitlab.conf
 grep_file 'resolver 127.0.0.11' portal/conf/stream-conf.d/gitlab.conf
 
-grep_file 'PORT_BIND_IP:-127.0.0.1}:8929:8929' portal/docker-compose.yml
-grep_file 'PORT_BIND_IP:-127.0.0.1}:2224:2224' portal/docker-compose.yml
+grep_file 'PORT_BIND_IP:-127.0.0.1}:8080:8080' portal/docker-compose.yml
+grep_file 'PORT_BIND_IP:-127.0.0.1}:2222:2222' portal/docker-compose.yml
 grep_file 'data-host="gitlab"' portal/html/index.html
 grep_file 'gitlab.glseven.local' README.md
 grep_file 'INTERNAL_ONLY="filebeat gitlab-runner"' common/check-consistency.sh
