@@ -59,7 +59,7 @@ bash shutdown.sh
 
 ## 服务访问入口
 
-**nginx（portal）是唯一持有宿主端口的容器**（30 个端口：8000 门户 + 12 个原生 http 监听 + 17 条 stream），其余 26 个服务零宿主端口；门户二级域名固定为 `portal.glseven.local`（容器名仍为 `nginx`），其余服务二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户；根域 `glseven.local:8000` 仅作兼容跳转。
+**nginx（portal）是唯一持有宿主端口的容器**（30 个端口：8000 门户 + 12 个原生 http 监听 + 17 条 stream），其余 26 个服务零宿主端口；门户端口按档案绑定：local 默认只监听 `127.0.0.1`，sit 默认监听 `0.0.0.0`，由 `PORT_BIND_IP` 覆盖。门户二级域名固定为 `portal.glseven.local`（容器名仍为 `nginx`），其余服务二级域名 = 容器名，URL 端口 = 容器原生端口，需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户；根域 `glseven.local:8000` 仅作兼容跳转。
 
 | 服务 | 入口 | 说明 |
 |---|---|---|
@@ -74,7 +74,7 @@ bash shutdown.sh
 | Nexus | http://nexus3.glseven.local:8081 | Web UI（Docker Registry 走 localhost:5000） |
 | GitLab | http://gitlab.glseven.local:8929 | 代码仓库与 CI/CD（仅 sit 档案启动） |
 | Portainer | http://portainer.glseven.local:9000 | 容器管理 |
-| APISIX | http://apisix.glseven.local:9180/ui | Dashboard / Admin API（X-API-KEY 见 platform/apisix/conf/config.yaml）；数据面 :9080 |
+| APISIX | http://apisix.glseven.local:9180/ui | Dashboard / Admin API（X-API-KEY 见 profile 的 `APISIX_ADMIN_KEY`）；数据面 :9080 |
 | Prometheus | http://prometheus.glseven.local:9090 | 指标（7 个抓取 job） |
 | Grafana | http://grafana.glseven.local:3000 | 可视化（数据源已 provision） |
 | Kibana | http://elk.glseven.local:5601 | 日志检索（ES API 同域名 :9200） |
@@ -98,8 +98,8 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 - **env 分层**：每个服务一个 `<域>/env/<service>.env`，compose 通过 `env_file` 引用；含默认凭据的文件顶部有 WARNING 注释，生产部署前必须修改。
 - **compose 模板**：`common/base-service.yml` 提供 `service-base` / `service-common` / `service-healthy` 三层模板；各域服务用 `extends: *healthy`（无探针用 `*base`/`*common`）引用，公共字段不要重复。
 - **服务互访走服务名**（Docker DNS），不硬编码 IP；固定 IP 仅用于宿主侧排查与防火墙放行。
-- **配置档案**：`.env.local` / `.env.sit` 承载机器相关值（`DOCKER_VOLUME`、`KAFKA_EXTERNAL_HOST`、`REDIS_PASSWORD`），由 `startup.sh --profile` 选择；`*.local.conf` 为本机专属 vhost，二者均 gitignore。
-- **监控接入**：`observability/prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。
+- **配置档案**：`.env.local` / `.env.sit` 承载机器相关值（`PORT_BIND_IP`、`DOCKER_VOLUME`、`KAFKA_EXTERNAL_HOST`、`REDIS_PASSWORD`、`GRAFANA_ADMIN_PASSWORD`、`APISIX_ADMIN_KEY`、`XXL_JOB_ACCESS_TOKEN`、`KEYCLOAK_ADMIN_PASSWORD`），由 `startup.sh --profile` 选择；缺任一必填键 preflight 会直接失败。`*.local.conf` 为本机专属 vhost，二者均 gitignore。
+- **监控接入**：`observability/prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。Prometheus 保留 15 天 / 10GB；filebeat 自监控经 Beats monitoring 进入 Kibana Stack Monitoring（5066 是 JSON，不经 Prometheus）；Grafana 预置 Targets 面板。
 - **日志接入**：`filebeat`（observability 域，172.18.2.4）经 Docker 容器日志接口采集，直发 `elk:5044` 的 logstash；`observability/elk/logstash/config/02-beats-input.conf` 覆盖镜像内置输入为**明文**（内置版要求 TLS）。Kibana 索引前缀为 `filebeat-`（非 `logstash-*`）。
 - **新增服务的同步点**：加一个服务要改 5 处——`<域>/docker-compose.yml`（服务定义用 `extends: *healthy`）、`portal/docker-compose.yml`（ports）、`portal/conf/{conf.d,stream-conf.d}/<服务名>.conf`、`portal/html/index.html` 卡片、README 的 /etc/hosts 清单与访问矩阵。`common/check-consistency.sh`（preflight 第 8 步）会机械校验这些同步点，漏改会告警但不阻断启动。
 
@@ -119,7 +119,7 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 ### APISIX 3.18.0
 
 - 独立网关组件：数据面 :9080 + Admin API :9180，**路由留空**由微服务开发自行配置（无路由时数据面 404 为预期）。
-- 内置 Dashboard 访问入口为 `/ui/`，配置与路由管理走 Admin API，`X-API-KEY` 见 `platform/apisix/conf/config.yaml`。
+- 内置 Dashboard 访问入口为 `/ui/`，配置与路由管理走 Admin API，`X-API-KEY` 见当前 profile 的 `APISIX_ADMIN_KEY`（`platform/apisix/conf/config.yaml` 用 `${{APISIX_ADMIN_KEY:=...}}` 读取）。
 - 配置存储为 infra 域的 etcd（3.6.14 成熟线）；`allow_admin: 0.0.0.0/0` 由 X-API-KEY 守卫（无/错 key 401），取舍说明见配置文件注释。
 
 ### ELK + filebeat 日志闭环
