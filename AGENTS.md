@@ -38,4 +38,4 @@ Follow Conventional Commits with Chinese descriptions, as in `fix(security): ...
 
 ## Security & Configuration Tips
 
-Keep real credentials out of tracked files. Profile files (`.env.local` / `.env.sit`) are ignored and hold per-machine values such as `DOCKER_VOLUME`, `KAFKA_EXTERNAL_HOST`, and `REDIS_PASSWORD`; only `*.example` templates are tracked. Treat `<domain>/env/*` defaults as development-only and preserve their production warnings. Do not reuse this isolated development exposure model, especially etcd, in production.
+Keep real credentials out of tracked files. Profile files (`.env.local` / `.env.sit`) are ignored and hold per-machine values such as `PORT_BIND_IP`, `DOCKER_VOLUME`, `KAFKA_EXTERNAL_HOST`, `REDIS_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`, `APISIX_ADMIN_KEY`, `XXL_JOB_ACCESS_TOKEN`, and `KEYCLOAK_ADMIN_PASSWORD`; only `*.example` templates are tracked. Treat `<domain>/env/*` defaults as development-only and preserve their production warnings. Do not reuse this isolated development exposure model, especially etcd, in production.

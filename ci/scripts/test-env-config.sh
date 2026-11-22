@@ -5,6 +5,9 @@ file="${1:-$ROOT/platform/env/nacos.env}"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
+# shellcheck source=../../common/preflight.sh
+source "$ROOT/common/preflight.sh"
+
 [ -f "$file" ] || fail "missing $file"
 grep -q '^NACOS_AUTH_ENABLE=true$' "$file" || fail "NACOS_AUTH_ENABLE must be true"
 for key in NACOS_AUTH_TOKEN NACOS_AUTH_IDENTITY_KEY NACOS_AUTH_IDENTITY_VALUE; do
@@ -21,7 +24,7 @@ if [ -z "${1:-}" ]; then
   rm -f "$tmp"
 fi
 
-for key in GRAFANA_ADMIN_PASSWORD APISIX_ADMIN_KEY XXL_JOB_ACCESS_TOKEN KEYCLOAK_ADMIN_PASSWORD; do
+for key in "${PROFILE_REQUIRED_KEYS[@]}"; do
   grep -q "^${key}=" "$ROOT/.env.local.example" || fail "local 示例缺少 $key"
   grep -q "^${key}=" "$ROOT/.env.sit.example" || fail "sit 示例缺少 $key"
 done

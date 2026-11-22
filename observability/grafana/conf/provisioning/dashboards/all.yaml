@@ -7,8 +7,7 @@ providers:
     type: file
     disableDeletion: false
     editable: false
-    # Dashboard JSON files should be placed in grafana/conf/dashboards/.
-    # The directory is currently empty; add *.json dashboard exports here
-    # and they will be auto-provisioned on Grafana startup.
+    # Dashboard JSON files in grafana/conf/dashboards/ are auto-provisioned.
+    # glseven-targets.json is the built-in Targets dashboard; add more exports here.
     options:
       path: /var/lib/grafana/dashboards

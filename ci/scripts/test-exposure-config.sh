@@ -3,16 +3,21 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
+# shellcheck source=../../common/preflight.sh
+source "$ROOT/common/preflight.sh"
+
 grep -q '^PORT_BIND_IP=127\.0\.0\.1$' "$ROOT/.env.local.example" || fail "local 示例缺少 PORT_BIND_IP=127.0.0.1"
 grep -q '^PORT_BIND_IP=0\.0\.0\.0$' "$ROOT/.env.sit.example" || fail "sit 示例缺少 PORT_BIND_IP=0.0.0.0"
 
 count=$(grep -cE '^      - "\$\{PORT_BIND_IP:-127\.0\.0\.1\}:[0-9]+:[0-9]+"' "$ROOT/portal/docker-compose.yml")
 [ "$count" -eq 30 ] || fail "portal 应有 30 条带 PORT_BIND_IP 的 ports，实际 $count"
+total=$(grep -cE '^      - "[^"]+:[0-9]+:[0-9]+"' "$ROOT/portal/docker-compose.yml")
+[ "$total" -eq 30 ] || fail "portal 总 ports 应为 30 条，实际 $total"
 
-grep -q 'NF-1' "$ROOT/common/preflight.sh" || fail "preflight 端口解析未使用三段式 NF-1"
+grep -q 'NF >= 3' "$ROOT/common/preflight.sh" || fail "preflight 端口解析应兼容两段/三段式"
 grep -q 'PORT_BIND_IP' "$ROOT/common/preflight.sh" || fail "preflight 未校验 PORT_BIND_IP"
 
-for key in GRAFANA_ADMIN_PASSWORD APISIX_ADMIN_KEY XXL_JOB_ACCESS_TOKEN KEYCLOAK_ADMIN_PASSWORD; do
+for key in "${PROFILE_REQUIRED_KEYS[@]}"; do
   grep -q "^${key}=" "$ROOT/.env.local.example" || fail "local 示例缺少 $key"
   grep -q "^${key}=" "$ROOT/.env.sit.example" || fail "sit 示例缺少 $key"
 done
@@ -22,9 +27,6 @@ grep -q 'APISIX_ADMIN_KEY' "$ROOT/platform/docker-compose.yml" || fail "platform
 grep -q 'XXL_JOB_ACCESS_TOKEN' "$ROOT/platform/xxl-job-admin/application.properties" || fail "xxl-job properties 未引用 XXL_JOB_ACCESS_TOKEN"
 grep -q 'XXL_JOB_ACCESS_TOKEN' "$ROOT/platform/docker-compose.yml" || fail "platform compose 未注入 XXL_JOB_ACCESS_TOKEN"
 grep -q 'KC_BOOTSTRAP_ADMIN_PASSWORD' "$ROOT/security/docker-compose.yml" || fail "Keycloak 未注入 bootstrap 口令"
-for key in GRAFANA_ADMIN_PASSWORD APISIX_ADMIN_KEY XXL_JOB_ACCESS_TOKEN KEYCLOAK_ADMIN_PASSWORD; do
-  grep -q "$key" "$ROOT/common/preflight.sh" || fail "preflight 未校验 $key"
-done
 
 ! grep -q '^KC_BOOTSTRAP_ADMIN_PASSWORD=' "$ROOT/security/env/keycloak.env" || fail "keycloak.env 不应重复定义 bootstrap 口令"
 ! grep -Fq 'Hint: cp ${PROFILE_FILE}.example' "$ROOT/common/preflight.sh" || fail "preflight 缺键提示不得建议覆盖 profile"

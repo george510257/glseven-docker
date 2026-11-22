@@ -5,7 +5,7 @@
 #                          特别保护 rabbitmq 的 .erlang.cookie（erlang 强制要求 600 且属主为容器
 #                          内 rabbitmq uid=999，宽权限会导致 BOOT FAILED）。
 #                          并把 .env 收紧为 600（含全部组件凭据，不得因 go+rX 递归放权泄露）。
-# 2. ensure_profile_file   校验 .env.<profile> 存在且含非空 DOCKER_VOLUME/REDIS_PASSWORD，并 chmod 600。
+# 2. ensure_profile_file   校验 .env.<profile> 存在且含全部必填键（见 PROFILE_REQUIRED_KEYS），并 chmod 600。
 # 3. ensure_max_map_count  Linux 上保证 vm.max_map_count ≥ 262144（Elasticsearch bootstrap 硬性
 #                          要求，fnOS/Debian 默认 65530），过低则 sysctl -w 并持久化 /etc/sysctl.conf。
 # 4. clean_orphan_bridges  删除孤儿 docker 网桥（接口 br-<id> 存在但对应 network 已被删除）：
@@ -36,6 +36,17 @@ PREFLIGHT_MAX_MAP_COUNT=262144
 # daemon.json 默认日志轮转参数
 PREFLIGHT_LOG_MAX_SIZE=50m
 PREFLIGHT_LOG_MAX_FILE=3
+
+# profile 必填键：startup.sh 的 preflight 与相关测试共用这一份清单。
+PROFILE_REQUIRED_KEYS=(
+  DOCKER_VOLUME
+  REDIS_PASSWORD
+  PORT_BIND_IP
+  GRAFANA_ADMIN_PASSWORD
+  APISIX_ADMIN_KEY
+  XXL_JOB_ACCESS_TOKEN
+  KEYCLOAK_ADMIN_PASSWORD
+)
 
 preflight_on_linux() { [ "$(uname -s)" = "Linux" ]; }
 
@@ -79,7 +90,7 @@ ensure_profile_file() {
     exit 1
   fi
   local key
-  for key in DOCKER_VOLUME REDIS_PASSWORD PORT_BIND_IP GRAFANA_ADMIN_PASSWORD APISIX_ADMIN_KEY XXL_JOB_ACCESS_TOKEN KEYCLOAK_ADMIN_PASSWORD; do
+  for key in "${PROFILE_REQUIRED_KEYS[@]}"; do
     if ! grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=[^[:space:]]" "$PROFILE_FILE"; then
       echo "Error: $key is missing or empty in $PROFILE_FILE" >&2
       echo "Hint: append ${key}=<value> to $PROFILE_FILE (see ${PROFILE_FILE}.example); do not overwrite an existing profile" >&2
@@ -145,9 +156,17 @@ pull_registry_images() {
 
 # 6) portal 发布端口预检：提取宿主端口，检查占用者；docker 自身监听属正常（幂等重启场景）。
 #    Linux 用 ss（占用者进程名 docker-proxy），macOS 用 lsof（com.docker.backend），语义一致。
+# 从 compose ports 提取宿主端口；兼容 "host:container" 与 "bind_ip:host:container"。
+extract_host_ports() {
+  grep -oE '"[^"]+:[0-9]+:[0-9]+"|"[0-9]+:[0-9]+"' "$1" 2>/dev/null |
+    tr -d '"' | awk -F: '{print (NF >= 3 ? $(NF-1) : $1)}' | sort -un
+}
+
 check_published_ports() {
   local port occupier issues=0
-  for port in $(grep -oE '"[^"]+:[0-9]+:[0-9]+"' "$SCRIPT_DIR/portal/docker-compose.yml" 2>/dev/null | tr -d '"' | awk -F: '{print $(NF-1)}' | sort -un); do
+  # 保守判定：任意地址上的同端口监听都视为冲突。PORT_BIND_IP=127.0.0.1 时，
+  # 仅绑定 LAN IP 的进程理论上不冲突，但这种情况少见，保留保守语义。
+  for port in $(extract_host_ports "$SCRIPT_DIR/portal/docker-compose.yml"); do
     if preflight_on_linux; then
       occupier=$(ss -tlnp 2>/dev/null | grep -E "[:.]$port[[:space:]]" | grep -oE '\(\("[a-zA-Z0-9_-]+"' | head -1 | tr -d '("')
       if [ -z "$occupier" ] || [ "$occupier" = "docker-proxy" ]; then continue; fi

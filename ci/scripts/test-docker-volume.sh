@@ -13,6 +13,8 @@ trap cleanup EXIT
 
 # shellcheck source=../../common/docker-volume.sh
 source "$VOLUME_HELPER"
+# shellcheck source=../../common/preflight.sh
+source "$ROOT_DIR/common/preflight.sh"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -100,6 +102,19 @@ if ( PROFILE_FILE="$TMP_ROOT/preflight-profile/.env.local"; source "$ROOT_DIR/co
   fail "profile missing REDIS_PASSWORD must fail"
 fi
 
+for missing in "${PROFILE_REQUIRED_KEYS[@]}"; do
+  missing_file="$TMP_ROOT/preflight-profile/missing-$missing.env"
+  : > "$missing_file"
+  for key in "${PROFILE_REQUIRED_KEYS[@]}"; do
+    if [ "$key" != "$missing" ]; then
+      printf '%s=x\n' "$key" >> "$missing_file"
+    fi
+  done
+  if ( PROFILE_FILE="$missing_file"; source "$ROOT_DIR/common/preflight.sh"; ensure_profile_file ) 2>/dev/null; then
+    fail "profile missing $missing must fail"
+  fi
+done
+
 permissions_dir="$TMP_ROOT/permissions"
 mkdir -p "$permissions_dir"
 printf 'x\n' > "$permissions_dir/.env"
@@ -118,5 +133,10 @@ file_mode() {
 [ "$(file_mode "$permissions_dir/.env")" = "600" ] || fail "legacy .env must be chmod 600"
 [ "$(file_mode "$permissions_dir/.env.local")" = "600" ] || fail "profile must be chmod 600"
 [ "$(file_mode "$permissions_dir/.env.local.example")" = "644" ] || fail "example must keep its mode"
+
+ports_fixture="$TMP_ROOT/ports-fixture.yml"
+printf '    ports:\n      - "127.0.0.1:8000:8000"\n      - "9000:9000"\n' > "$ports_fixture"
+assert_eq "$(extract_host_ports "$ports_fixture" | tr '\n' ' ')" "8000 9000 " \
+  "extracts host ports from two- and three-part mappings"
 
 printf 'docker-volume tests: OK\n'

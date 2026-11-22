@@ -5,6 +5,8 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
 grep -Fq 'retention.time=15d' "$ROOT/observability/docker-compose.yml" || fail "Prometheus 缺少 retention.time"
 grep -Fq 'retention.size=10GB' "$ROOT/observability/docker-compose.yml" || fail "Prometheus 缺少 retention.size"
+grep -Fq -- '--config.file=/etc/prometheus/prometheus.yml' "$ROOT/observability/docker-compose.yml" || fail "Prometheus 缺少 config.file"
+grep -Fq -- '--storage.tsdb.path=/prometheus' "$ROOT/observability/docker-compose.yml" || fail "Prometheus 缺少 storage.tsdb.path"
 grep -Fq 'monitoring.enabled: true' "$ROOT/observability/filebeat/conf/filebeat.yml" || fail "Filebeat 未开启 monitoring"
 grep -Fq 'monitoring.elasticsearch' "$ROOT/observability/filebeat/conf/filebeat.yml" || fail "Filebeat 未配置 monitoring.elasticsearch"
 DASH="$ROOT/observability/grafana/conf/dashboards/glseven-targets.json"
