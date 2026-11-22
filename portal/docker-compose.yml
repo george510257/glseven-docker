@@ -32,36 +32,36 @@ services:
       glseven:
         ipv4_address: 172.18.6.1
     ports:
-      - "8000:8000"    # http：静态门户（nginx 自身约定端口，全栈唯一非原生号）
-      - "8929:8929"    # http → gitlab（仅 sit；外部 URL 与容器内端口一致）
-      - "3000:3000"    # http → grafana / moontv（同端口按 Host 分流）
-      - "8080:8080"    # http → adminer / php-ldap-admin / keycloak / nacos / xxl-job-admin / open-webui
-      - "8081:8081"    # http → mongo-express / nexus3
-      - "9000:9000"    # http → portainer
-      - "9090:9090"    # http → prometheus
-      - "5601:5601"    # http → elk Kibana
-      - "9200:9200"    # http → elk ES API
-      - "15672:15672"  # http → rabbitmq 管理
-      - "9080:9080"    # http → apisix 数据面
-      - "9180:9180"    # http → apisix Admin API
-      - "3306:3306"    # stream → mysql
-      - "6379:6379"    # stream → redis
-      - "27017:27017"  # stream → mongo
-      - "5673:5672"    # stream → rabbitmq AMQP（宿主 5673：NAS 自带 rabbitmq-server 占用 5672）
-      - "1883:1883"    # stream → rabbitmq MQTT
-      - "15675:15675"  # stream → rabbitmq MQTT-WS
-      - "9092:9092"    # stream → kafka PLAINTEXT（存量兼容透传：宿主旧 hosts 路径；容器网络内直连不经 nginx）
-      - "29092:29092"  # stream → kafka EXTERNAL（宿主/局域网客户端入口，advertised 见 infra/env/kafka.env）
-      - "2379:2379"    # stream → etcd（HTTP REST/gRPC 透传）
-      - "389:389"      # stream → openldap
-      - "636:636"      # stream → openldap LDAPS
-      - "8848:8848"    # stream → nacos Open API
-      - "9848:9848"    # stream → nacos gRPC
-      - "11434:11434"  # stream → ollama
-      - "5044:5044"    # stream → elk Beats
-      - "5000:5000"    # stream → nexus3 Docker Registry（AirPlay 见 README）
-      - "2224:2224"    # stream → gitlab SSH（容器 22，宿主避开 fnOS sshd）
-      - "1905:1905"    # http → iptv 直播源管理
+      - "${PORT_BIND_IP:-127.0.0.1}:8000:8000"    # http：静态门户（nginx 自身约定端口，全栈唯一非原生号）
+      - "${PORT_BIND_IP:-127.0.0.1}:8929:8929"    # http → gitlab（仅 sit；外部 URL 与容器内端口一致）
+      - "${PORT_BIND_IP:-127.0.0.1}:3000:3000"    # http → grafana / moontv（同端口按 Host 分流）
+      - "${PORT_BIND_IP:-127.0.0.1}:8080:8080"    # http → adminer / php-ldap-admin / keycloak / nacos / xxl-job-admin / open-webui
+      - "${PORT_BIND_IP:-127.0.0.1}:8081:8081"    # http → mongo-express / nexus3
+      - "${PORT_BIND_IP:-127.0.0.1}:9000:9000"    # http → portainer
+      - "${PORT_BIND_IP:-127.0.0.1}:9090:9090"    # http → prometheus
+      - "${PORT_BIND_IP:-127.0.0.1}:5601:5601"    # http → elk Kibana
+      - "${PORT_BIND_IP:-127.0.0.1}:9200:9200"    # http → elk ES API
+      - "${PORT_BIND_IP:-127.0.0.1}:15672:15672"  # http → rabbitmq 管理
+      - "${PORT_BIND_IP:-127.0.0.1}:9080:9080"    # http → apisix 数据面
+      - "${PORT_BIND_IP:-127.0.0.1}:9180:9180"    # http → apisix Admin API
+      - "${PORT_BIND_IP:-127.0.0.1}:3306:3306"    # stream → mysql
+      - "${PORT_BIND_IP:-127.0.0.1}:6379:6379"    # stream → redis
+      - "${PORT_BIND_IP:-127.0.0.1}:27017:27017"  # stream → mongo
+      - "${PORT_BIND_IP:-127.0.0.1}:5673:5672"    # stream → rabbitmq AMQP（宿主 5673：NAS 自带 rabbitmq-server 占用 5672）
+      - "${PORT_BIND_IP:-127.0.0.1}:1883:1883"    # stream → rabbitmq MQTT
+      - "${PORT_BIND_IP:-127.0.0.1}:15675:15675"  # stream → rabbitmq MQTT-WS
+      - "${PORT_BIND_IP:-127.0.0.1}:9092:9092"    # stream → kafka PLAINTEXT（存量兼容透传：宿主旧 hosts 路径；容器网络内直连不经 nginx）
+      - "${PORT_BIND_IP:-127.0.0.1}:29092:29092"  # stream → kafka EXTERNAL（宿主/局域网客户端入口，advertised 见 infra/env/kafka.env）
+      - "${PORT_BIND_IP:-127.0.0.1}:2379:2379"    # stream → etcd（HTTP REST/gRPC 透传）
+      - "${PORT_BIND_IP:-127.0.0.1}:389:389"      # stream → openldap
+      - "${PORT_BIND_IP:-127.0.0.1}:636:636"      # stream → openldap LDAPS
+      - "${PORT_BIND_IP:-127.0.0.1}:8848:8848"    # stream → nacos Open API
+      - "${PORT_BIND_IP:-127.0.0.1}:9848:9848"    # stream → nacos gRPC
+      - "${PORT_BIND_IP:-127.0.0.1}:11434:11434"  # stream → ollama
+      - "${PORT_BIND_IP:-127.0.0.1}:5044:5044"    # stream → elk Beats
+      - "${PORT_BIND_IP:-127.0.0.1}:5000:5000"    # stream → nexus3 Docker Registry（AirPlay 见 README）
+      - "${PORT_BIND_IP:-127.0.0.1}:2224:2224"    # stream → gitlab SSH（容器 22，宿主避开 fnOS sshd）
+      - "${PORT_BIND_IP:-127.0.0.1}:1905:1905"    # http → iptv 直播源管理
     healthcheck:
       # 镜像内无 curl/wget（debian-slim 底座），沿用项目已验证的 bash /dev/tcp 探测模式；探门户监听 8000。
       test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8000' || exit 1"]

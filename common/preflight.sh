@@ -79,7 +79,7 @@ ensure_profile_file() {
     exit 1
   fi
   local key
-  for key in DOCKER_VOLUME REDIS_PASSWORD; do
+  for key in DOCKER_VOLUME REDIS_PASSWORD PORT_BIND_IP; do
     if ! grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=[^[:space:]]" "$PROFILE_FILE"; then
       echo "Error: $key is missing or empty in $PROFILE_FILE" >&2
       echo "Hint: cp ${PROFILE_FILE}.example ${PROFILE_FILE}" >&2
@@ -147,7 +147,7 @@ pull_registry_images() {
 #    Linux 用 ss（占用者进程名 docker-proxy），macOS 用 lsof（com.docker.backend），语义一致。
 check_published_ports() {
   local port occupier issues=0
-  for port in $(grep -oE '"[0-9]+:[0-9]+"' "$SCRIPT_DIR/portal/docker-compose.yml" 2>/dev/null | cut -d'"' -f2 | cut -d: -f1 | sort -un); do
+  for port in $(grep -oE '"[^"]+:[0-9]+:[0-9]+"' "$SCRIPT_DIR/portal/docker-compose.yml" 2>/dev/null | tr -d '"' | awk -F: '{print $(NF-1)}' | sort -un); do
     if preflight_on_linux; then
       occupier=$(ss -tlnp 2>/dev/null | grep -E "[:.]$port[[:space:]]" | grep -oE '\(\("[a-zA-Z0-9_-]+"' | head -1 | tr -d '("')
       if [ -z "$occupier" ] || [ "$occupier" = "docker-proxy" ]; then continue; fi

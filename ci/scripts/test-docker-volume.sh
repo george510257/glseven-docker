@@ -90,7 +90,7 @@ assert_eq \
   SCRIPT_DIR="$TMP_ROOT/preflight-profile"
   mkdir -p "$SCRIPT_DIR"
   PROFILE_FILE="$SCRIPT_DIR/.env.local"
-  printf 'DOCKER_VOLUME=/tmp/glseven\nREDIS_PASSWORD=x\n' > "$PROFILE_FILE"
+  printf 'DOCKER_VOLUME=/tmp/glseven\nREDIS_PASSWORD=x\nPORT_BIND_IP=127.0.0.1\n' > "$PROFILE_FILE"
   # shellcheck source=../../common/preflight.sh
   source "$ROOT_DIR/common/preflight.sh"
   ensure_profile_file >/dev/null
