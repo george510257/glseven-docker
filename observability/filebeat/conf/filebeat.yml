@@ -53,3 +53,9 @@ logging.to_files: false
 http.enabled: true
 http.host: 0.0.0.0
 http.port: 5066
+
+# Beats 自监控指标发往 ES，Kibana Stack Monitoring 可见。
+# 5066 只提供 JSON /stats，不是 Prometheus 文本格式，不能直接加 scrape job。
+monitoring.enabled: true
+monitoring.elasticsearch:
+  hosts: ["http://elk:9200"]

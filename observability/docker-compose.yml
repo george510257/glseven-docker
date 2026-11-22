@@ -20,6 +20,11 @@ services:
     image: prom/prometheus:v3.14.0
     container_name: prometheus
     hostname: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=10GB
     volumes:
       - ./prometheus/conf/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ${DOCKER_VOLUME:?DOCKER_VOLUME is required (set it in the active profile)}/prometheus/data:/prometheus
