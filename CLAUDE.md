@@ -33,6 +33,7 @@ bash ci/scripts/test-profile.sh
 bash ci/scripts/test-startup-platform.sh
 bash ci/scripts/test-release-scripts.sh
 bash ci/scripts/test-env-config.sh
+bash ci/scripts/test-compose-style.sh
 for f in */docker-compose.yml; do docker compose --env-file .env.local -f "$f" config -q; done
 bash common/check-consistency.sh --strict
 git diff --check
@@ -53,6 +54,8 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 
 **分层 Compose，不写跨 project 依赖。** 七个域包（`infra/`、`observability/`、`security/`、`platform/`、`apps/`、`devops/`、`portal/`）一域一个，compose 为 `<域>/docker-compose.yml`，各自是独立 Compose project，共用外部网络 `glseven`，每域占 `172.18.<域号>.x`。`depends_on` 只在单个文件内有效；跨域依赖被刻意省略，改由批次时序 + `restart: always` 兜底。
 
+**`common/base-service.yml` 是服务公共字段的唯一数据源。** 三层模板：`service-base`（`restart`）、`service-common`（+ `common.env`）、`service-healthy`（+ 标准 healthcheck 时间参数）。各域 compose 用 `x-` 锚点引用，服务里只写 `extends: *healthy`（无探针用 `*base`/`*common`）。`extends` 的映射字段（`environment`、`healthcheck`）按 key 合并；`env_file` 列表拼接，base 的相对路径会自动重定位。改公共字段只改这里，最终配置用 `docker compose config` 查看。
+
 **`common/compose-list.sh` 是启动顺序的唯一数据源。** 它定义 `COMPOSE_FILES_BASE` / `_DEFERRED` / `_PORTAL` 与 Apple Silicon 的 observability 子集，`startup.sh`、`shutdown.sh` 共同消费。新增域只改这一个文件。时序：BASE（infra + observability）→ 等 MySQL healthy（120s 超时）→ DEFERRED（security + platform + apps）→ DEVOPS（仅 sit）→ PORTAL。
 
 **nginx（portal）是唯一持有宿主端口的容器。** 发布 30 个端口 = 8000 门户 + 12 个原生 HTTP 监听 + 17 条 stream 透明转发；其余 26 个服务 `ports:` 一律为空。配置按容器拆分：HTTP vhost 在 `portal/conf/conf.d/<容器名>.conf`（每个有 HTTP 入口的容器一个，另有 `00-default-catchall.conf` 处理裸 IP 与共享端口兜底，`00-` 前缀不可去掉），TCP 在 `portal/conf/stream-conf.d/<容器名>.conf`（12 个文件覆盖 17 条 stream）。核心规则：**nginx 监听端口 = 容器原生端口**，客户端连接串零改动。
@@ -63,7 +66,7 @@ curl -I http://<容器名>.glseven.local:<原生端口>
 
 ## 新增或改名服务：5 个同步点
 
-1. 对应域的 `docker-compose-<域>.yml` 服务定义——`container_name` 必须等于 `hostname`（子域名 = 容器名的前提；不一致会被一致性脚本静默跳过，门户域名 `portal` → 容器 `nginx` 是唯一例外）
+1. 对应域的 `<域>/docker-compose.yml` 服务定义——首字段写 `extends: *healthy`（无探针用 `*base`/`*common` 并说明理由）；`container_name` 必须等于 `hostname`（子域名 = 容器名的前提；不一致会被一致性脚本静默跳过，门户域名 `portal` → 容器 `nginx` 是唯一例外）
 2. `portal/docker-compose.yml` 的 `ports:`（HTTP 与 stream 各一行，端口 = 容器原生端口）
 3. `portal/conf/conf.d/<name>.conf` 和/或 `portal/conf/stream-conf.d/<name>.conf`
 4. `portal/html/index.html` 卡片（`data-host="<name>"`；`apisix`、`elk` 有意不放卡片）

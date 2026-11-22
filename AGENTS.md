@@ -14,13 +14,14 @@ for file in */docker-compose.yml; do docker compose --env-file .env.local -f "$f
 bash common/check-consistency.sh
 bash ci/scripts/test-profile.sh
 bash ci/scripts/test-env-config.sh
+bash ci/scripts/test-compose-style.sh
 ```
 
 `startup.sh` runs preflight checks, creates volumes and the `glseven` network, then starts domains in batches. `shutdown.sh` stops them in reverse order. The `devops` domain is profile-gated: only `--profile sit` starts GitLab and its runner. The two validation commands check Compose syntax and cross-file portal consistency. There is no application build or unit-test suite.
 
 ## Coding Style & Naming Conventions
 
-Use two-space indentation for YAML, Nginx, and component configuration. Keep Bash in `snake_case`, quote variables, and prefer reusable arrays or functions in existing scripts. Container names, hostnames, DNS references, and portal subdomains must match, for example `mysql`. Services reference each other by container DNS name, not fixed IP. Keep host-port publishing centralized in `portal/docker-compose.yml`; do not add `ports` to individual services.
+Use two-space indentation for YAML, Nginx, and component configuration. Keep Bash in `snake_case`, quote variables, and prefer reusable arrays or functions in existing scripts. Container names, hostnames, DNS references, and portal subdomains must match, for example `mysql`. Services reference each other by container DNS name, not fixed IP. Keep host-port publishing centralized in `portal/docker-compose.yml`; do not add `ports` to individual services. Service definitions use the shared templates in `common/base-service.yml` via `extends: *healthy` (or `*base`/`*common`); do not repeat `restart`, `common.env`, or standard healthcheck timings in domain compose files.
 
 ## Testing Guidelines
 

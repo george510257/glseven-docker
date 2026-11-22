@@ -96,11 +96,12 @@ mysql 3306、redis 6379、mongo 27017、AMQP 5673（宿主为避开 NAS 自带 r
 ## 配置约定
 
 - **env 分层**：每个服务一个 `<域>/env/<service>.env`，compose 通过 `env_file` 引用；含默认凭据的文件顶部有 WARNING 注释，生产部署前必须修改。
+- **compose 模板**：`common/base-service.yml` 提供 `service-base` / `service-common` / `service-healthy` 三层模板；各域服务用 `extends: *healthy`（无探针用 `*base`/`*common`）引用，公共字段不要重复。
 - **服务互访走服务名**（Docker DNS），不硬编码 IP；固定 IP 仅用于宿主侧排查与防火墙放行。
 - **配置档案**：`.env.local` / `.env.sit` 承载机器相关值（`DOCKER_VOLUME`、`KAFKA_EXTERNAL_HOST`、`REDIS_PASSWORD`），由 `startup.sh --profile` 选择；`*.local.conf` 为本机专属 vhost，二者均 gitignore。
 - **监控接入**：`observability/prometheus/conf/prometheus.yml` 抓取 prometheus / rabbitmq / nacos / apisix / etcd / keycloak / grafana 共 7 个 job；kafka、elk、moontv 不接入的原因见文件内注释。
 - **日志接入**：`filebeat`（observability 域，172.18.2.4）经 Docker 容器日志接口采集，直发 `elk:5044` 的 logstash；`observability/elk/logstash/config/02-beats-input.conf` 覆盖镜像内置输入为**明文**（内置版要求 TLS）。Kibana 索引前缀为 `filebeat-`（非 `logstash-*`）。
-- **新增服务的同步点**：加一个服务要改 5 处——`<域>/docker-compose.yml`、`portal/docker-compose.yml`（ports）、`portal/conf/{conf.d,stream-conf.d}/<服务名>.conf`、`portal/html/index.html` 卡片、README 的 /etc/hosts 清单与访问矩阵。`common/check-consistency.sh`（preflight 第 8 步）会机械校验这些同步点，漏改会告警但不阻断启动。
+- **新增服务的同步点**：加一个服务要改 5 处——`<域>/docker-compose.yml`（服务定义用 `extends: *healthy`）、`portal/docker-compose.yml`（ports）、`portal/conf/{conf.d,stream-conf.d}/<服务名>.conf`、`portal/html/index.html` 卡片、README 的 /etc/hosts 清单与访问矩阵。`common/check-consistency.sh`（preflight 第 8 步）会机械校验这些同步点，漏改会告警但不阻断启动。
 
 ## 容器日志轮转与 etcd 风险边界
 
