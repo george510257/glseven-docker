@@ -12,7 +12,8 @@ echo "Smoke: waiting for healthy containers (timeout ${SMOKE_TIMEOUT}s)..."
 deadline=$((SECONDS + SMOKE_TIMEOUT))
 while :; do
   unhealthy=""
-  for c in $(docker ps --format '{{.Names}}'); do
+  # 只看 glseven 网络：共享宿主上其他 stack 的 unhealthy 容器不应影响本编排 smoke。
+  for c in $(docker ps --filter network=glseven --format '{{.Names}}'); do
     status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$c" 2>/dev/null || true)"
     [ -z "$status" ] && continue
     [ "$status" = "healthy" ] || unhealthy="$unhealthy $c:$status"

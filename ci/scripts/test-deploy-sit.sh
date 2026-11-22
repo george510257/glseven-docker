@@ -26,4 +26,7 @@ grep -q 'deploy:sit:rollback' "$ROOT/.gitlab-ci.yml" || fail "缺少回滚作业
 grep -q 'devops/docker-compose.yml' "$ROOT/.gitlab-ci.yml" || fail "缺少 devops changes 规则"
 grep -q 'when: never' "$ROOT/.gitlab-ci.yml" || fail "devops 变更必须 when: never"
 
+grep -Fq -- '--filter network=glseven' "$ROOT/ci/smoke-test.sh" ||
+  fail "smoke-test.sh 必须只检查 glseven 网络的容器"
+
 printf 'deploy-sit tests: OK\n'
