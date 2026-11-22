@@ -89,12 +89,36 @@ check_services() {
   done
 }
 
+# YAML 重复键在 Compose 里是解析错误，但本机无 Docker 时 `compose config` 跑不到，
+# 合并冲突解决时最容易漏；这里静态兜底顶层键与每个服务的字段键。
+check_duplicate_keys() {
+  local file="$1" domain="$2" dups
+  dups=$(awk '
+    /^[a-zA-Z_][a-zA-Z0-9_-]*:/ {
+      key = $1; sub(/:$/, "", key)
+      if (top[key]++) print "顶层 " key
+    }
+    /^services:$/ { in_services = 1; next }
+    in_services && /^  [a-z0-9-]+:$/ {
+      svc = $1; sub(/:$/, "", svc)
+      split("", seen)
+      next
+    }
+    in_services && /^    [a-zA-Z_][a-zA-Z0-9_-]*:/ {
+      key = $1; sub(/:$/, "", key)
+      if (seen[key]++) print svc ":" key
+    }
+  ' "$file")
+  [ -z "$dups" ] || fail "$domain: 存在重复键（$(echo "$dups" | tr '\n' ' ')）"
+}
+
 check_base
 for domain in "${DOMAINS[@]}"; do
   file="$ROOT/$domain/docker-compose.yml"
   [ -f "$file" ] || fail "缺少 $domain/docker-compose.yml"
   check_header "$file" "$domain"
   check_services "$file" "$domain"
+  check_duplicate_keys "$file" "$domain"
 done
 
 printf 'compose style tests: OK\n'

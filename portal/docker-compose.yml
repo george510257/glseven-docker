@@ -32,7 +32,6 @@ services:
       glseven:
         ipv4_address: 172.18.6.1
     ports:
-    ports:
       - "${PORT_BIND_IP:-127.0.0.1}:3000:3000"    # http → grafana / moontv（同端口按 Host 分流）
       - "${PORT_BIND_IP:-127.0.0.1}:8080:8080"    # http：共享入口（门户 + GitLab + adminer / php-ldap-admin / keycloak / nacos / xxl-job-admin / open-webui）
       - "${PORT_BIND_IP:-127.0.0.1}:8081:8081"    # http → mongo-express / nexus3
