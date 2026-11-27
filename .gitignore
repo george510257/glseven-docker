@@ -27,7 +27,9 @@ data/
 
 # Tool-generated artifacts (Qoder repowiki, session state)
 .qoder/
-.omc/
+# OMC 运行态忽略；项目技能 .omc/skills/ 纳入版本库
+.omc/*
+!.omc/skills/
 
 # Local Claude Code settings
 .claude/
