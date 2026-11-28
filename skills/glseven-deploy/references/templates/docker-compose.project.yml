@@ -1,0 +1,25 @@
+# 服务名/容器名统一为 <project>-<service>；镜像名为 docker-hosted/<project>-<service>:<tag>。
+name: <project>
+
+networks:
+  glseven:
+    external: true
+
+services:
+  <project>-auth:
+    image: 192.168.31.100:5000/docker-hosted/<project>-auth:<tag>
+    container_name: <project>-auth
+    hostname: <project>-auth
+    restart: always
+    env_file:
+      - .env
+    networks:
+      - glseven
+    # 不发布宿主端口：统一由 portal 代理。
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+  # 其余服务按同样结构复制：<project>-system / <project>-codegen / <project>-gateway / <project>-web

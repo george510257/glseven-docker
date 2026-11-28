@@ -1,0 +1,9 @@
+# 用法：先在宿主构建前端 dist，再构建本镜像；路径按项目实际产物调整。
+FROM nginx:1.30.4-alpine
+COPY nginx.web.conf /etc/nginx/conf.d/default.conf
+COPY dist/main/ /usr/share/nginx/html/
+COPY dist/sub-auth/ /usr/share/nginx/html/sub-auth/
+COPY dist/sub-codegen/ /usr/share/nginx/html/sub-codegen/
+COPY dist/sub-system/ /usr/share/nginx/html/sub-system/
+COPY dist/portal/ /usr/share/nginx/html/portal/
+EXPOSE 80

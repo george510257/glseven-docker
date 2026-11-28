@@ -1,0 +1,19 @@
+stages: [build, deploy]
+
+variables:
+  REGISTRY: 192.168.31.100:5000
+  IMAGE_PREFIX: docker-hosted/<project>
+
+build-and-push:
+  stage: build
+  image: docker:29.10.0-cli
+  before_script:
+    - echo "$NEXUS_PASSWORD" | docker login "$REGISTRY" -u "$NEXUS_USER" --password-stdin
+  script:
+    - docker buildx build --platform linux/amd64 --build-arg JAR_FILE=<jar> -t "$REGISTRY/$IMAGE_PREFIX-auth:$CI_COMMIT_SHA" --push .
+
+deploy:sit:
+  stage: deploy
+  needs: [build-and-push]
+  script:
+    - ssh "$SIT_HOST" "cd /vol1/1000/projects/<project> && docker compose pull && docker compose up -d"

@@ -45,4 +45,19 @@ for secret in \
 done
 pass "skills/ 无已知凭据"
 
+check_skill_frontmatter skills/glseven-deploy skills/glseven-deploy/SKILL.md
+pass "glseven-deploy frontmatter"
+
+for f in Dockerfile.java Dockerfile.web nginx.web.conf docker-compose.project.yml portal-project.conf gitlab-ci.project.yml env.project.example; do
+  [[ -f "skills/glseven-deploy/references/templates/$f" ]] || fail "缺少模板 skills/glseven-deploy/references/templates/$f"
+done
+
+grep -q 'linux/amd64' skills/glseven-deploy/references/deploy-flow.md || fail "deploy-flow 未写 linux/amd64"
+grep -q '<project>-<service>' skills/glseven-deploy/references/templates/docker-compose.project.yml || fail "compose 模板未使用 <project>-<service> 命名"
+grep -q 'athena-web:80' skills/glseven-deploy/references/athena.md || fail "athena 示例未写 athena-web:80"
+grep -q 'docker-hosted/athena-' skills/glseven-deploy/references/athena.md || fail "athena 示例未写单段镜像名"
+if grep -Eq '^[[:space:]]*ports:' skills/glseven-deploy/references/templates/docker-compose.project.yml; then
+  fail "compose 模板不得发布宿主端口"
+fi
+
 pass "test-skills: 通过"
