@@ -8,6 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 改动几乎只落在 `<域>/docker-compose.yml`、`<域>/env/*.env`、`portal/conf/**`、`.gitlab-ci.yml`、`ci/**` 和各组件自身配置文件上。「测试」由三类组成：Compose 静态渲染、Bash 脚本测试、起环境后的实时探测。CI 跑前两类，因此本地提交前应执行同一组命令。
 
+## 技能包
+
+`skills/` 是供使用方项目消费的技能包（`glseven-env` 连接环境、`glseven-deploy` 部署项目），与 athena-skill 的 dev-flow 无关；格式与凭据泄漏由 `ci/scripts/test-skills.sh` 校验。修改技能后运行该脚本。
+
 ## 常用命令
 
 ```bash
