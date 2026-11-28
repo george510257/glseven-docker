@@ -50,7 +50,8 @@ description: 把使用方项目容器化并部署到 glseven 测试环境（sit�
 
 - 不在使用方 compose 里写宿主 `ports:`。
 - 不给每个前端各起一个 nginx；用一个 web 容器托管全部 dist。
-- 不把凭据提交到仓库，或不通过命令行参数传密码。
+- 不把凭据提交到仓库，也不通过命令行参数传密码。
+- 不给 auth/system/codegen 配 Nacos；只有 gateway 使用。
 - 不在 sit 上直接 `mvn` 构建多个仓库（内存与 GitHub Packages 凭据都不合适）。
 
 ## 安全

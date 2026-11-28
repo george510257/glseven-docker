@@ -1,9 +1,9 @@
-# 用法：先在宿主构建前端 dist，再构建本镜像；路径按项目实际产物调整。
+# 用法：先在宿主构建前端 dist，再构建本镜像；构建上下文需包含 main/ 与 sub-*/。
+# portal 是 base 为 / 的独立站点（athena 的 dist-portal/），单独托管，不放进本镜像。
 FROM nginx:1.30.4-alpine
 COPY nginx.web.conf /etc/nginx/conf.d/default.conf
-COPY dist/main/ /usr/share/nginx/html/
-COPY dist/sub-auth/ /usr/share/nginx/html/sub-auth/
-COPY dist/sub-codegen/ /usr/share/nginx/html/sub-codegen/
-COPY dist/sub-system/ /usr/share/nginx/html/sub-system/
-COPY dist/portal/ /usr/share/nginx/html/portal/
+COPY main/ /usr/share/nginx/html/
+COPY sub-auth/ /usr/share/nginx/html/sub-auth/
+COPY sub-codegen/ /usr/share/nginx/html/sub-codegen/
+COPY sub-system/ /usr/share/nginx/html/sub-system/
 EXPOSE 80

@@ -13,7 +13,7 @@
 | Kafka | 宿主/局域网 `29092` | `kafka:9092` | `infra/env/kafka.env` + 根 `.env.<profile>` 的 `KAFKA_EXTERNAL_HOST` | 宿主不要用 9092 |
 | etcd | `etcd.glseven.local:2379` | `etcd:2379` | 无认证 | 开发环境明示风险 |
 | Nacos | 控制台 `nacos.glseven.local:8080`；客户端宿主 `8848` / gRPC `9848` | `nacos:8848` / `nacos:9848` | `platform/env/nacos.env`；客户端用户名/密码由控制台初始化 | 客户端鉴权已开启 |
-| OpenLDAP | `ldap.glseven.local:389/636` | `openldap:389/636` | `security/env/openldap.env` | 首次需导入 admin 条目 |
+| OpenLDAP | `openldap.glseven.local:389/636` | `openldap:389/636` | `security/env/openldap.env` | 首次需导入 admin 条目 |
 
 ## UI / 控制台
 

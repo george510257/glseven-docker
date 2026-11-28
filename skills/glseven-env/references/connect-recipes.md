@@ -16,19 +16,23 @@ REDIS_HOST=redis
 REDIS_PORT=6379
 REDIS_PASSWORD=<根 .env.<profile> 的 REDIS_PASSWORD>
 NACOS_SERVER_ADDR=nacos:8848
-NACOS_USERNAME=<Nacos 控制台创建的用户>
-NACOS_PASSWORD=<部署目录 .env>
-AUTH_ISSUER=http://athena-auth:8080
-AUTH_ISSUER_URI=http://athena-auth:8080
+SPRING_CLOUD_NACOS_USERNAME=<Nacos 控制台创建的用户>
+SPRING_CLOUD_NACOS_PASSWORD=<部署目录 .env>
+SYSTEM_SERVICE_URI=http://athena-system:8083
+CODEGEN_SERVICE_URI=http://athena-codegen:8082
 AUTH_SERVICE_URI=http://athena-auth:8080
+AUTH_ISSUER=http://athena.glseven.local:8080
+AUTH_ISSUER_URI=http://athena-auth:8080
 ```
 
 说明：
 
-- `DB_URL` 按服务换库名：`athena_auth`、`athena_system`、`athena_codegen`。
+- `DB_URL` 按服务换库名：`athena_auth`、`athena_system`、`athena_codegen`；每个服务在自己的 compose `environment` 里设置。
 - `DB_USERNAME` / `DB_PASSWORD` 用部署目录 `.env` 里的账号；`REDIS_PASSWORD` 来自 glseven-docker 根 `.env.<profile>`。
-- Nacos 用户由环境维护者在控制台创建；服务器端 `NACOS_AUTH_TOKEN` 只用于服务端，不要复制给使用方。
-- issuer 用服务名地址 `http://athena-auth:8080`；前端只用相对路径 `/oauth2/token`，不读 OIDC 元数据。若改用域名形式，需要给容器加 `extra_hosts` 指向 portal。
+- **只有 `athena-gateway` 使用 Nacos**（`NACOS_SERVER_ADDR` + `SPRING_CLOUD_NACOS_USERNAME/PASSWORD`）；auth/system/codegen 显式关闭了 Nacos discovery/config，不要给它们配 Nacos。
+- 网关静态路由需要三个服务地址：`AUTH_SERVICE_URI=http://athena-auth:8080`、`SYSTEM_SERVICE_URI=http://athena-system:8083`、`CODEGEN_SERVICE_URI=http://athena-codegen:8082`；缺一个就会对应前缀 502。
+- `AUTH_ISSUER` 会写进 JWT 的 `iss`，用**客户端实际访问的对外地址**（`http://athena.glseven.local:8080`）；容器需要 `extra_hosts` 把该域名指到 portal `172.18.6.1`。
+- `AUTH_ISSUER_URI` 是服务间拉 OIDC 元数据/JWKS 的地址，用 `http://athena-auth:8080`。两个变量不要设成同一个值。
 
 ## athena：开发机
 
@@ -42,11 +46,13 @@ REDIS_HOST=192.168.31.100
 REDIS_PORT=6379
 REDIS_PASSWORD=<根 .env.<profile> 的 REDIS_PASSWORD>
 NACOS_SERVER_ADDR=192.168.31.100:8848
-NACOS_USERNAME=<Nacos 控制台创建的用户>
-NACOS_PASSWORD=<本地 .env>
+SPRING_CLOUD_NACOS_USERNAME=<Nacos 控制台创建的用户>
+SPRING_CLOUD_NACOS_PASSWORD=<本地 .env>
+SYSTEM_SERVICE_URI=http://localhost:8083
+CODEGEN_SERVICE_URI=http://localhost:8082
+AUTH_SERVICE_URI=http://localhost:8080
 AUTH_ISSUER=http://localhost:8080
 AUTH_ISSUER_URI=http://localhost:8080
-AUTH_SERVICE_URI=http://localhost:8080
 ```
 
 ## Nacos 客户端鉴权
@@ -58,7 +64,7 @@ spring.cloud.nacos.username=<user>
 spring.cloud.nacos.password=<password>
 ```
 
-若仍返回 401/403，再补 `spring.cloud.nacos.discovery.username/password` 与 `spring.cloud.nacos.config.username/password`。Nacos 控制台管理员 `nacos` 的密码在首次初始化时设置。
+对应环境变量是 `SPRING_CLOUD_NACOS_USERNAME` / `SPRING_CLOUD_NACOS_PASSWORD`（Spring 的 relaxed binding），不是 `NACOS_USERNAME`。只有 gateway 需要；Nacos 控制台管理员 `nacos` 的密码在首次初始化时设置。
 
 ## Kafka
 
@@ -71,6 +77,6 @@ spring.cloud.nacos.password=<password>
 ```bash
 nc -vz 192.168.31.100 3306
 mysql -h 192.168.31.100 -P 3306 -uroot -p -e 'select 1'
-redis-cli -h 192.168.31.100 -p 6379 -a "$REDIS_PASSWORD" ping
+REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli -h 192.168.31.100 -p 6379 ping
 curl -sS -o /dev/null -w '%{http_code}\n' http://nacos.glseven.local:8080/
 ```

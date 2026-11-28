@@ -17,7 +17,8 @@ ssh legion 'free -h && docker stats --no-stream'
 ## 1. 构建后端 jar（开发机）
 
 ```bash
-cd <repo> && mvn -B -s .mvn/settings.xml -Dgh.actor=<user> -Dgh.token=<PAT> verify
+# 凭据由 Maven settings-security 或环境变量注入；不要把 token 写进命令行。
+cd <repo> && mvn -B -s .mvn/settings.xml -Dgh.actor=<user> verify
 ```
 
 按项目发布顺序构建；athena 是 auth → system → codegen → gateway。
@@ -38,10 +39,10 @@ docker buildx build --platform linux/amd64 \
 ssh legion 'sudo mkdir -p /vol1/1000/projects/<project> && sudo chown 1000:1000 /vol1/1000/projects/<project>'
 ```
 
-把 compose 与模板复制到该目录；`.env` 权限 600：
+把 compose 与模板复制到该目录（模板 `docker-compose.project.yml` 重命名为 `docker-compose.yml`，或后续命令加 `-f`）；`.env` 权限 600：
 
 ```bash
-chmod 600 /vol1/1000/projects/<project>/.env
+ssh legion 'chmod 600 /vol1/1000/projects/<project>/.env'
 ```
 
 ## 4. 创建数据库/用户
@@ -57,6 +58,8 @@ ssh -t legion 'docker exec -it mysql mysql -uroot -p'
 ```bash
 ssh legion 'cd /vol1/1000/projects/<project> && docker compose pull && docker compose up -d && docker compose ps'
 ```
+
+若模板未重命名为 `docker-compose.yml`，在每条命令里加 `-f docker-compose.project.yml`。
 
 观察健康状态；`docker logs <container>` 排查启动失败。
 

@@ -42,10 +42,13 @@
 - **镜像命名**：Nexus Docker 托管仓库使用单段镜像名 `docker-hosted/<project>-<service>:<tag>`（如 `docker-hosted/athena-auth:2026-11-28`），与既有 sit 设计和 runbook 示例一致，避免多段路径在 Nexus 上的不确定性。
 - **服务命名**：`glseven` 是共享网络，使用方的服务名/容器名/网络别名一律带项目前缀（如 `athena-auth`、`athena-web`），避免与其它项目的 `auth` / `web` 冲突导致 DNS 轮询到错误容器。
 - **本仓库校验**：`ci/validate.sh` 会跑 shell 语法、`ci/scripts/test-*.sh`、compose 渲染、`check-consistency --strict` 和空白检查；新增脚本必须兼容 macOS Bash 3.2，且不依赖 Docker。
-- **athena 事实**（来自其 CLAUDE.md 与运行验证报告）：
+- **athena 事实**（2026-11-28 按源码复核）：
   - 4 个后端：gateway 8000/8001、auth 8080、system 8083、codegen 8082；5 个前端：main 5173、web-auth 5177/5178、web-codegen 5176、web-system 5179。
   - 后端配置已支持 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD`、`REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`、`NACOS_SERVER_ADDR` 等环境变量；网关路由源默认 `nacos`。
-  - 构建依赖 GitHub Packages 私有构件（`.mvn/settings.xml` + PAT）；auth 必须先于 system 启动（system 启动时解析 auth 的 issuer URI）；codegen 的建表 DDL 不在 Flyway 目录，需手工执行。
+  - 网关静态路由需要 `AUTH_SERVICE_URI` / `SYSTEM_SERVICE_URI` / `CODEGEN_SERVICE_URI`；只有 gateway 使用 Nacos discovery，auth/system/codegen 显式关闭。
+  - `AUTH_ISSUER` 写入 JWT `iss`（客户端对外地址），`AUTH_ISSUER_URI` 是服务间拉 OIDC 元数据的地址；两者不可混用。
+  - 前端 qiankun 生产入口为 `/micro/sub-*/`；`athena-web-auth` 的 portal 产物是 `dist-portal/`，base 为 `/`，独立托管。
+  - 构建依赖 GitHub Packages 私有构件（`.mvn/settings.xml` + PAT，凭据不放在命令行）；auth 必须先于 system 启动；codegen 已改为 Flyway 自动迁移（`db/migration/V1__code_data_source.sql`），无需手工建表。
 
 ## 5. 方案与取舍
 
@@ -123,7 +126,7 @@ SKILL.md 的内容骨架：
    - `DB_URL` / `DB_USERNAME` / `DB_PASSWORD`；宿主机与容器内两种 host 写法。
    - `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`（环境启用了 `requirepass`）。
    - `NACOS_SERVER_ADDR` + 客户端用户名/密码（环境显式开启了客户端鉴权）；容器内写 `nacos:8848`，宿主写 `<host>:8848`。
-   - `AUTH_ISSUER` / `AUTH_ISSUER_URI` / `AUTH_SERVICE_URI` 的取值思路：issuer 必须是解析 OIDC 元数据的后端服务可达的地址（如 `http://athena-auth:8080`）；浏览器是否需要访问取决于登录流程（athena 前端只用相对路径 `/oauth2/token`，不读 OIDC 元数据）。若选域名形式，用 `extra_hosts` 把域名指到 portal。
+   - `AUTH_ISSUER` 用客户端实际访问的对外地址（写入 JWT `iss`，如 `http://athena.glseven.local:8080`，容器用 `extra_hosts` 指到 portal）；`AUTH_ISSUER_URI` 用服务间可达地址（`http://athena-auth:8080`）拉 OIDC 元数据/JWKS；`AUTH_SERVICE_URI` 是网关路由到 auth 的地址。
    - Kafka：容器内 `kafka:9092`，宿主一律 `29092`；不要用宿主 `9092`。
 6. **排障**（`references/troubleshooting.md`）：`NOAUTH`、Nacos 401/403、Kafka 超时、MySQL `Access denied`、浏览器 302 到门户、`Unknown database`、Flyway 跳过 V1、hosts 未生效。每条给出「现象 → 先查什么 → 常见根因」。
 7. **安全**：不把凭据写进代码或文档；使用环境变量或 gitignored 的 env 文件。
@@ -149,16 +152,18 @@ SKILL.md 的内容骨架：
    6. 验证：容器健康、登录 token、经门户的 API、Kibana 中容器日志。
    7. 回滚：镜像 tag 固定，保留上一版 compose；用上一版 tag `up -d`。
 4. **athena 示例**（`references/athena.md`）：
-   - 服务清单（均带 `athena-` 前缀）：`athena-auth` 8080、`athena-system` 8083、`athena-codegen` 8082、`athena-gateway` 8000/8001、`athena-web`（nginx，聚合 5 个前端 dist）。
+   - 服务清单（均带 `athena-` 前缀）：`athena-auth` 8080、`athena-system` 8083、`athena-codegen` 8082、`athena-gateway` 8000/8001、`athena-web`（nginx，聚合 main + 3 个 qiankun 子应用）。
    - 镜像命名（`docker-hosted/athena-auth:<tag>` 等）、构建命令、启动顺序（auth 先就绪 → system/codegen → gateway → web）。
-   - issuer 用 `http://athena-auth:8080`（后端服务可达；前端走相对路径 `/oauth2/token`）；若用域名形式，`extra_hosts` 指到 portal。前端 `/api`、`/oauth2` 反代到 `athena-gateway:8000`。
-   - Nacos 客户端凭据由环境维护者提供（控制台管理员 `nacos` 的密码在首次初始化时设置）；推荐为 athena 建独立用户，凭据放部署目录的 gitignored `.env`。Nacos 服务注册与网关路由；数据库初始化；验证 curl；回滚。
-   - 现有本机 `portal/conf/conf.d/athena.local.conf` 的上游要从 `web:80` 改为 `athena-web:80`，issuer 说明同步更新。
+   - 网关静态路由的 `AUTH_SERVICE_URI` / `SYSTEM_SERVICE_URI` / `CODEGEN_SERVICE_URI`；issuer 的对外/服务间拆分与 `extra_hosts`；前端 `/api`、`/oauth2` 反代到 `athena-gateway:8000`。
+   - 只有 gateway 使用 Nacos；auth/system/codegen 关闭 discovery。Nacos 客户端凭据由环境维护者提供（控制台管理员 `nacos` 的密码在首次初始化时设置）；推荐独立用户，凭据放部署目录的 gitignored `.env`。
+   - 前端 qiankun 入口 `/micro/sub-*/`；`athena-web-auth` 的 `dist-portal/` 是 base `/` 的独立站点，单独托管；`Dockerfile.web` 不含 portal。
+   - codegen 由 Flyway 自动建表（`db/migration/V1__code_data_source.sql`），不手工执行 DDL。
+   - 现有本机 `portal/conf/conf.d/athena.local.conf` 的上游要从 `web:80` 改为 `athena-web:80`。
 5. **模板**（`references/templates/`）：
    - `Dockerfile.java`：`eclipse-temurin:21-jre`，非 root，复制 jar，JVM 参数与健康检查占位。
-   - `Dockerfile.web`：nginx 提供多份 dist（qiankun 子应用按路径），反代 API 到网关。
-   - `nginx.web.conf`：多份 dist 的路径规则与 `/api`、`/oauth2` 反代到网关。
-   - `docker-compose.project.yml`：外部网络、服务名、env_file、无宿主端口、`extra_hosts` 占位。
+   - `Dockerfile.web`：nginx 提供 main + qiankun 子应用 dist，反代 API 到网关；portal 不在其中。
+   - `nginx.web.conf`：`/micro/sub-*/` 的 qiankun HTML 入口、`/sub-*/` 静态资源、`/api`、`/oauth2` 反代到网关。
+   - `docker-compose.project.yml`：外部网络、服务名、env_file、无宿主端口、`extra_hosts` 指到 portal、按服务端口设置的探针。
    - `portal-project.conf`：`listen 8080`、`server_name <project>.glseven.local`、resolver + 变量上游、`snippets/proxy.conf`。
    - `gitlab-ci.project.yml`：build → docker buildx push → ssh deploy 的可选模板。
    - `env.project.example`：`DB_URL`、`DB_USERNAME`、`DB_PASSWORD`、`REDIS_*`、`NACOS_*` 占位。
