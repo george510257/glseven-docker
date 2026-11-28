@@ -57,6 +57,18 @@ bash shutdown.sh
 
 > **命令迁移**：旧命令 `docker compose -f docker-compose-<域>.yml ...` 已改为 `docker compose --env-file .env.local -f <域>/docker-compose.yml ...`；`--env-file` 必须带，否则档案文件中的 `REDIS_PASSWORD` 不会被读取。
 
+## 技能包（供其他项目使用）
+
+`skills/` 下是给使用方项目的 Claude Code 技能包：`glseven-env`（连接测试环境的数据库与中间件）和 `glseven-deploy`（把项目容器化并部署到 sit）。技能与环境配置同仓维护，使用方在自己的仓库根目录建符号链接即可：
+
+```bash
+ln -s /path/to/glseven-docker/skills .claude/skills
+```
+
+若目标项目已有 `.claude/skills`，改为分别软链 `glseven-env`、`glseven-deploy` 两个目录。
+
+首个使用方是 athena。技能只提供做法与模板，不把使用方服务纳入本编排（见 `docs/superpowers/specs/2026-11-28-test-env-skill-package-design.md`）。
+
 ## 服务访问入口
 
 **nginx（portal）是唯一持有宿主端口的容器**（28 个端口：8080 共享入口（门户 + GitLab + 6 个原生服务）+ 10 个原生 http 监听 + 17 条 stream），其余 26 个服务零宿主端口；门户端口按档案绑定：local 默认只监听 `127.0.0.1`，sit 默认监听 `0.0.0.0`，由 `PORT_BIND_IP` 覆盖。门户二级域名固定为 `portal.glseven.local`（容器名仍为 `nginx`），其余服务二级域名 = 容器名，URL 端口 = 容器原生端口（门户与 GitLab 因 fnOS 占用 80 改用 8080），需先完成 /etc/hosts 初始化。IP 直连共享端口（3000/8080/8081）由 default_server 统一 302 到门户；根域 `glseven.local:8080` 仅作兼容跳转。
